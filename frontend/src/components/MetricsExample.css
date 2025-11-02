@@ -1,0 +1,147 @@
+/**
+ * MetricsExample Component Styles
+ */
+
+.metrics-example {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Header */
+.example-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.example-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 10px;
+}
+
+.example-subtitle {
+  font-size: 16px;
+  color: #666;
+}
+
+/* Strategy Selector */
+.strategy-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+.strategy-button {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.strategy-button:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+  transform: translateY(-2px);
+}
+
+.strategy-button.active {
+  border-color: #667eea;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.3);
+}
+
+.strategy-button.active .strategy-name,
+.strategy-button.active .strategy-desc {
+  color: white;
+}
+
+.strategy-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 6px;
+}
+
+.strategy-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+}
+
+/* Metrics Container */
+.metrics-container {
+  margin-bottom: 40px;
+}
+
+/* Info Section */
+.example-info {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.info-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.info-card {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.info-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.info-card h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 8px;
+}
+
+.info-card p {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .example-title {
+    font-size: 24px;
+  }
+
+  .strategy-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .example-info {
+    padding: 20px;
+  }
+}
