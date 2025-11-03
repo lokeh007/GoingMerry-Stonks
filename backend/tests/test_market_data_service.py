@@ -122,8 +122,10 @@ def test_health_check_success():
 @pytest.mark.unit
 def test_health_check_failure():
     """Test health check returns False on failure."""
+    from requests.exceptions import RequestException
+
     with patch('app.services.market_data.requests.get') as mock_get:
-        mock_get.side_effect = Exception("Connection failed")
+        mock_get.side_effect = RequestException("Connection failed")
 
         provider = MarketDataProvider(api_key="test_key")
         assert provider.health_check() is False
@@ -168,3 +170,5 @@ def test_real_api_connection():
     # Should not raise exception
     health = provider.health_check()
     assert isinstance(health, bool)
+
+

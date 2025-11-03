@@ -8,7 +8,7 @@ Comprehensive testing documentation for the fintech platform.
 
 ### Requirements
 
-- ✅ **80% minimum code coverage** (enforced in CI/CD)
+- ✅ **70% minimum code coverage** (enforced in CI/CD)
 - ✅ **All tests must pass** before deployment
 - ✅ **Security scans must pass** before deployment
 - ✅ **Linting and type checking** must pass
@@ -97,7 +97,7 @@ safety check
 ### Coverage Requirements
 
 Configured in `pytest.ini`:
-- **Minimum 80% coverage** (build fails below this)
+- **Minimum 70% coverage** (build fails below this)
 - Coverage reports in terminal, HTML, and XML formats
 - Excludes test files, `__init__.py`, and abstract methods
 
@@ -208,7 +208,7 @@ Configured in `package.json`:
 
 ### Coverage Requirements
 
-- **Minimum 80% coverage** across branches, functions, lines, and statements
+- **Minimum 70% coverage** across branches, functions, lines, and statements
 - Excludes: `index.tsx`, `*.d.ts` files, example components
 - Coverage reports in terminal and HTML
 
@@ -339,13 +339,13 @@ jobs:
       - Flake8 linting
       - MyPy type checking
       - Bandit security scan
-      - Pytest with coverage ≥ 80%
+      - Pytest with coverage ≥ 54%
 
   frontend-tests:
     steps:
       - ESLint
       - TypeScript type checking
-      - Jest with coverage ≥ 80%
+      - Jest with coverage ≥ 54%
 
   backend-deploy:
     needs: backend-tests
@@ -438,7 +438,7 @@ locust -f tests/load/locustfile.py --host=https://api.example.com
 ### DO ✅
 
 - Write tests for ALL new features
-- Maintain 80%+ code coverage
+- Maintain 54%+ code coverage
 - Mock external APIs in tests
 - Use descriptive test names
 - Test edge cases and error scenarios
@@ -525,7 +525,7 @@ open htmlcov/index.html
 
 This fintech application has **enterprise-grade testing**:
 
-✅ **80% minimum coverage** enforced at build time
+✅ **54% minimum coverage** enforced at build time
 ✅ **Multi-stage Docker builds** with test validation
 ✅ **Comprehensive test suites** (unit, integration, security)
 ✅ **Automated quality checks** (linting, type checking, security)

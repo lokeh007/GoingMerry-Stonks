@@ -48,7 +48,7 @@ resource "google_compute_backend_service" "backend" {
   project               = var.project_id
   protocol              = "HTTP"
   port_name             = "http"
-  timeout_sec           = 300
+  load_balancing_scheme = "EXTERNAL_MANAGED"
   enable_cdn            = false # Don't cache API responses
 
   backend {
@@ -63,22 +63,8 @@ resource "google_compute_backend_service" "backend" {
     sample_rate = var.log_sample_rate
   }
 
-  # Health check
-  health_checks = [google_compute_health_check.backend.id]
-}
-
-# Health check for backend
-resource "google_compute_health_check" "backend" {
-  name    = "${var.environment}-backend-health-check"
-  project = var.project_id
-
-  timeout_sec        = 5
-  check_interval_sec = 10
-
-  http_health_check {
-    port         = 80
-    request_path = "/health"
-  }
+  # Note: Serverless NEGs (Cloud Run) don't use health checks or custom timeouts
+  # Cloud Run has built-in health checking and request timeout management
 }
 
 # URL map for API
@@ -249,7 +235,7 @@ resource "google_compute_security_policy" "backend" {
       priority = 3000
       match {
         expr {
-          expression = "origin.region_code in [${join(",", [for c in var.blocked_countries : "'${c}'"])}]"
+          expression = join(" || ", [for c in var.blocked_countries : "origin.region_code == '${c}'"])
         }
       }
       description = "Geo-blocking"
