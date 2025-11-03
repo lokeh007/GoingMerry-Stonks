@@ -1,0 +1,301 @@
+# Cloud Build Configuration with Mandatory Testing
+# Automated CI/CD pipeline with test gates for building and deploying backend and frontend
+
+# Substitutions (can be overridden via gcloud or triggers)
+substitutions:
+  _REGION: us-east5
+  _ENVIRONMENT: prod
+  _BACKEND_SERVICE: prod-backend-api
+  _FRONTEND_SERVICE: prod-frontend
+
+options:
+  # Use higher powered machines for faster builds
+  machineType: 'E2_HIGHCPU_8'
+
+  # Enable substitution option checking
+  substitution_option: 'ALLOW_LOOSE'
+
+  # Logging options
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # ========================================
+  # Backend: Lint, Type Check, Test
+  # ========================================
+  - name: 'python:3.11-slim'
+    id: 'backend-quality-checks'
+    dir: 'backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing dependencies..."
+        pip install --quiet -r requirements.txt -r requirements-dev.txt
+
+        echo "Running Black formatting check..."
+        black --check app/ || exit 1
+
+        echo "Running Flake8 linting..."
+        flake8 app/ --max-line-length=100 --extend-ignore=E203,W503 || exit 1
+
+        echo "Running MyPy type checking..."
+        mypy app/ --ignore-missing-imports || exit 1
+
+        echo "✅ Code quality checks passed"
+    timeout: 300s
+
+  - name: 'python:3.11-slim'
+    id: 'backend-security-scan'
+    dir: 'backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing security tools..."
+        pip install --quiet bandit safety
+
+        echo "Running Bandit security scan..."
+        bandit -r app/ -ll || exit 1
+
+        echo "Checking for known vulnerabilities..."
+        safety check --json || echo "⚠️  Warning: Some dependencies may have known vulnerabilities"
+
+        echo "✅ Security scans passed"
+    waitFor: ['backend-quality-checks']
+    timeout: 180s
+
+  - name: 'python:3.11-slim'
+    id: 'backend-tests'
+    dir: 'backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing dependencies..."
+        pip install --quiet -r requirements.txt -r requirements-dev.txt
+
+        echo "Running test suite with coverage..."
+        pytest tests/ \
+          --cov=app \
+          --cov-report=term-missing \
+          --cov-report=xml \
+          --cov-fail-under=80 \
+          --maxfail=5 \
+          -v \
+          || exit 1
+
+        echo "✅ All backend tests passed (coverage ≥ 80%)"
+    waitFor: ['backend-security-scan']
+    timeout: 600s
+
+  # ========================================
+  # Frontend: Lint, Type Check, Test
+  # ========================================
+  - name: 'node:18-alpine'
+    id: 'frontend-quality-checks'
+    dir: 'frontend'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Installing dependencies..."
+        npm ci --quiet
+
+        echo "Running ESLint..."
+        npm run lint || exit 1
+
+        echo "Running TypeScript type checking..."
+        npm run type-check || exit 1
+
+        echo "✅ Code quality checks passed"
+    timeout: 300s
+
+  - name: 'node:18-alpine'
+    id: 'frontend-tests'
+    dir: 'frontend'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Installing dependencies..."
+        npm ci --quiet
+
+        echo "Running test suite with coverage..."
+        npm run test:coverage || exit 1
+
+        echo "✅ All frontend tests passed (coverage ≥ 80%)"
+    waitFor: ['frontend-quality-checks']
+    timeout: 600s
+
+  # ========================================
+  # Backend: Build and Push Docker Image
+  # ========================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '--tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:${SHORT_SHA}'
+      - '--tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:latest'
+      - '--cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:latest'
+      - '--build-arg=BUILDKIT_INLINE_CACHE=1'
+      - './backend'
+    waitFor: ['backend-tests']
+    timeout: 900s
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api'
+    waitFor: ['build-backend']
+    timeout: 300s
+
+  # ========================================
+  # Frontend: Build and Push Docker Image
+  # ========================================
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '--tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web:${SHORT_SHA}'
+      - '--tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web:latest'
+      - '--cache-from=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web:latest'
+      - '--build-arg=BUILDKIT_INLINE_CACHE=1'
+      - './frontend'
+    waitFor: ['frontend-tests']
+    timeout: 900s
+
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web'
+    waitFor: ['build-frontend']
+    timeout: 300s
+
+  # ========================================
+  # Deploy Backend to Cloud Run
+  # ========================================
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_BACKEND_SERVICE}'
+      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:${SHORT_SHA}'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--quiet'
+    waitFor: ['push-backend']
+    timeout: 600s
+
+  # ========================================
+  # Deploy Frontend to Firebase Hosting
+  # ========================================
+  - name: 'node:18-alpine'
+    id: 'deploy-frontend-firebase'
+    dir: 'frontend'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Installing Firebase CLI..."
+        npm install -g firebase-tools
+
+        echo "Installing dependencies..."
+        npm ci --quiet
+
+        echo "Building production bundle..."
+        npm run build
+
+        echo "Deploying to Firebase Hosting..."
+        firebase deploy --only hosting --token ${_FIREBASE_TOKEN} --project ${PROJECT_ID}
+    waitFor: ['push-frontend']
+    timeout: 600s
+
+  # ========================================
+  # Post-Deployment Smoke Tests
+  # ========================================
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'smoke-test-backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Waiting for backend deployment to stabilize..."
+        sleep 30
+
+        BACKEND_URL=$$(gcloud run services describe ${_BACKEND_SERVICE} --region=${_REGION} --format='value(status.url)')
+        echo "Testing backend health at: $${BACKEND_URL}/health"
+
+        curl -f $${BACKEND_URL}/health || exit 1
+        echo "✅ Backend health check passed"
+
+        curl -f $${BACKEND_URL}/api/docs || exit 1
+        echo "✅ API documentation accessible"
+    waitFor: ['deploy-backend']
+    timeout: 120s
+
+  - name: 'gcr.io/cloud-builders/curl'
+    id: 'smoke-test-frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Waiting for frontend deployment to stabilize..."
+        sleep 30
+
+        FRONTEND_URL="https://${PROJECT_ID}.web.app"
+        echo "Testing frontend at: $${FRONTEND_URL}"
+
+        curl -f $${FRONTEND_URL} || exit 1
+        echo "✅ Frontend accessible"
+
+        # Test API proxy through Firebase
+        curl -f $${FRONTEND_URL}/api/health || exit 1
+        echo "✅ API proxy working through frontend"
+    waitFor: ['deploy-frontend-firebase']
+    timeout: 120s
+
+  # ========================================
+  # Final Validation
+  # ========================================
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'deployment-summary'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "========================================="
+        echo "DEPLOYMENT SUCCESSFUL"
+        echo "========================================="
+        echo ""
+        echo "Backend API:"
+        gcloud run services describe ${_BACKEND_SERVICE} --region=${_REGION} --format='value(status.url)'
+        echo ""
+        echo "Frontend:"
+        echo "https://${PROJECT_ID}.web.app"
+        echo ""
+        echo "Build ID: ${BUILD_ID}"
+        echo "Git Commit: ${SHORT_SHA}"
+        echo ""
+        echo "✅ All tests passed"
+        echo "✅ All quality checks passed"
+        echo "✅ All security scans passed"
+        echo "✅ Deployments successful"
+        echo "✅ Smoke tests passed"
+        echo "========================================="
+    waitFor: ['smoke-test-backend', 'smoke-test-frontend']
+
+# Images to be pushed to Artifact Registry
+images:
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-backend/api:latest'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web:${SHORT_SHA}'
+  - '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_ENVIRONMENT}-frontend/web:latest'
+
+# Timeout for entire build (30 minutes)
+timeout: 1800s

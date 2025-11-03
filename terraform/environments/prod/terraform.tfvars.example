@@ -1,0 +1,87 @@
+# Production Environment Configuration Example
+# Copy this file to terraform.tfvars and fill in your values
+# DO NOT commit terraform.tfvars to version control
+
+# ========================================
+# Project Configuration
+# ========================================
+
+project_id = "sylvan-earth-477020-u6"
+region     = "us-east5"
+
+# ========================================
+# Secrets (NEVER COMMIT THESE)
+# ========================================
+
+polygon_api_key = "6_DHVbJzHzzNptukGYvbaZPuQPntpJJ7"
+
+# ========================================
+# Backend Docker Image
+# Set after building and pushing to Artifact Registry
+# ========================================
+
+backend_image = "us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0"
+
+# ========================================
+# Backend Scaling Configuration
+# ========================================
+
+backend_min_instances = 1    # Keep at least 1 instance warm
+backend_max_instances = 10   # Max autoscale limit
+backend_cpu_limit     = "2"  # 2 vCPU per instance
+backend_memory_limit  = "1Gi"
+
+# ========================================
+# Database Configuration (Cloud SQL PostgreSQL)
+# ========================================
+
+database_version              = "POSTGRES_15"
+database_tier                 = "db-custom-2-8192" # 2 vCPU, 8GB RAM
+database_name                 = "goingmerry_stonks"
+database_user                 = "app_user"
+database_disk_size_gb         = 20
+database_max_disk_size_gb     = 100
+database_high_availability    = true  # Regional instance with failover
+database_enable_pitr          = true  # Point-in-time recovery
+database_max_connections      = "100"
+
+# Optional: Authorize specific IPs for direct database access
+# database_authorized_networks = [
+#   {
+#     name = "office"
+#     cidr = "203.0.113.0/24"
+#   }
+# ]
+
+# ========================================
+# Networking Configuration
+# ========================================
+
+enable_private_ip = true # Use private IP for Cloud SQL (recommended)
+
+# Optional: Custom domain for API
+api_domain = "api.goingmerry-stonks.com"
+
+# ========================================
+# Security Configuration
+# ========================================
+
+enable_ssl         = true
+enable_cloud_armor = true
+
+# Rate limiting (requests per minute per IP)
+rate_limit_requests = 100
+
+# Optionally block specific countries (ISO 3166-1 alpha-2 codes)
+# blocked_countries = ["CN", "RU", "KP"]
+blocked_countries = ["RU"]
+
+# ========================================
+# Monitoring Configuration
+# ========================================
+
+enable_monitoring = true
+alert_email       = "brian.boatright@gmail.com"
+
+# Log sampling (1.0 = 100% of requests logged)
+log_sample_rate = 1.0

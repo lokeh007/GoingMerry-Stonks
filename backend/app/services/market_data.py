@@ -440,6 +440,327 @@ class MarketDataProvider:
             logger.debug(f"Failed to get snapshot for {option_ticker}: {e}")
             return {}
 
+    def get_ticker_details(self, ticker: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a ticker.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., 'AAPL', 'TSLA').
+
+        Returns:
+            Dict containing:
+                - ticker (str): The ticker symbol
+                - name (str): Company name
+                - market_cap (float): Market capitalization
+                - sector (str): Industry sector
+                - description (str): Company description
+
+        Raises:
+            InvalidTickerError: If the ticker symbol is invalid or not found.
+            APIConnectionError: If unable to connect to the API.
+            MarketDataError: For other API-related errors.
+        """
+        if not ticker or not isinstance(ticker, str):
+            raise InvalidTickerError("Ticker must be a non-empty string")
+
+        ticker = ticker.upper().strip()
+
+        endpoint = f"{self.base_url}/v3/reference/tickers/{ticker}"
+        params = {"apiKey": self.api_key}
+
+        try:
+            logger.info(f"Fetching ticker details for: {ticker}")
+
+            response = requests.get(
+                endpoint,
+                params=params,
+                timeout=self.timeout
+            )
+
+            if response.status_code == 404:
+                raise InvalidTickerError(f"Ticker '{ticker}' not found")
+            elif response.status_code == 429:
+                raise RateLimitError("API rate limit exceeded")
+            elif response.status_code == 403:
+                raise APIConnectionError("API authentication failed")
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            if data.get("status") != "OK":
+                raise MarketDataError(f"API returned non-OK status: {data.get('status')}")
+
+            results = data.get("results", {})
+
+            return {
+                "ticker": ticker,
+                "name": results.get("name", ""),
+                "market_cap": results.get("market_cap", 0),
+                "sector": results.get("sic_description", ""),
+                "description": results.get("description", ""),
+                "primary_exchange": results.get("primary_exchange", ""),
+            }
+
+        except Timeout:
+            raise APIConnectionError(f"Request timed out after {self.timeout} seconds")
+        except HTTPError as e:
+            raise APIConnectionError(f"HTTP error occurred: {str(e)}")
+        except RequestException as e:
+            raise APIConnectionError(f"Network error occurred: {str(e)}")
+
+    def get_stock_financials(self, ticker: str) -> Dict[str, Any]:
+        """
+        Get financial data for a ticker.
+
+        Fetches key financial metrics including earnings, debt, equity, and growth rates.
+
+        Args:
+            ticker: Stock ticker symbol (e.g., 'AAPL', 'TSLA').
+
+        Returns:
+            Dict containing:
+                - ticker (str): The ticker symbol
+                - pe_ratio (float): Price-to-Earnings ratio
+                - peg_ratio (float): PEG ratio
+                - eps (float): Earnings per share
+                - eps_growth (float): EPS growth rate (%)
+                - revenue_growth (float): Revenue growth rate (%)
+                - debt_to_equity (float): Debt-to-Equity ratio
+                - current_ratio (float): Current ratio
+                - market_cap (float): Market capitalization
+
+        Raises:
+            InvalidTickerError: If the ticker symbol is invalid or not found.
+            APIConnectionError: If unable to connect to the API.
+            MarketDataError: For other API-related errors.
+        """
+        if not ticker or not isinstance(ticker, str):
+            raise InvalidTickerError("Ticker must be a non-empty string")
+
+        ticker = ticker.upper().strip()
+
+        # Get ticker details for market cap and basic info
+        endpoint = f"{self.base_url}/vX/reference/financials"
+        params = {
+            "ticker": ticker,
+            "limit": 4,  # Get last 4 quarters for growth calculations
+            "apiKey": self.api_key,
+        }
+
+        try:
+            logger.info(f"Fetching financials for: {ticker}")
+
+            response = requests.get(
+                endpoint,
+                params=params,
+                timeout=self.timeout
+            )
+
+            if response.status_code == 404:
+                raise InvalidTickerError(f"Financials not found for ticker '{ticker}'")
+            elif response.status_code == 429:
+                raise RateLimitError("API rate limit exceeded")
+            elif response.status_code == 403:
+                raise APIConnectionError("API authentication failed")
+
+            response.raise_for_status()
+
+            data = response.json()
+
+            if data.get("status") != "OK":
+                raise MarketDataError(f"API returned non-OK status: {data.get('status')}")
+
+            results = data.get("results", [])
+
+            if not results:
+                logger.warning(f"No financial data found for {ticker}")
+                return self._get_empty_financials(ticker)
+
+            # Get most recent financial data
+            latest = results[0] if results else {}
+            financials = latest.get("financials", {})
+
+            # Extract balance sheet data
+            balance_sheet = financials.get("balance_sheet", {})
+            current_assets = balance_sheet.get("current_assets", {}).get("value", 0)
+            current_liabilities = balance_sheet.get("current_liabilities", {}).get("value", 0)
+            total_debt = balance_sheet.get("long_term_debt", {}).get("value", 0)
+            total_equity = balance_sheet.get("equity", {}).get("value", 0)
+
+            # Extract income statement data
+            income_statement = financials.get("income_statement", {})
+            net_income = income_statement.get("net_income_loss", {}).get("value", 0)
+            revenues = income_statement.get("revenues", {}).get("value", 0)
+            basic_eps = income_statement.get("basic_earnings_per_share", {}).get("value", 0)
+
+            # Calculate financial ratios
+            current_ratio = (
+                current_assets / current_liabilities
+                if current_liabilities and current_liabilities != 0
+                else 0
+            )
+
+            debt_to_equity = (
+                total_debt / total_equity
+                if total_equity and total_equity != 0
+                else 0
+            )
+
+            # Calculate growth rates (compare most recent to 4 quarters ago)
+            eps_growth = 0.0
+            revenue_growth = 0.0
+
+            if len(results) >= 4:
+                old_financials = results[3].get("financials", {})
+                old_income = old_financials.get("income_statement", {})
+                old_eps = old_income.get("basic_earnings_per_share", {}).get("value", 0)
+                old_revenues = old_income.get("revenues", {}).get("value", 0)
+
+                if old_eps and old_eps != 0:
+                    eps_growth = ((basic_eps - old_eps) / abs(old_eps)) * 100
+
+                if old_revenues and old_revenues != 0:
+                    revenue_growth = ((revenues - old_revenues) / abs(old_revenues)) * 100
+
+            # Get current stock price for PE calculation
+            try:
+                quote = self.get_stock_quote(ticker)
+                price = quote["price"]
+
+                # Calculate PE ratio
+                pe_ratio = price / basic_eps if basic_eps and basic_eps != 0 else 0
+
+                # Calculate PEG ratio (PE / earnings growth rate)
+                peg_ratio = (
+                    pe_ratio / eps_growth
+                    if eps_growth and eps_growth > 0
+                    else 0
+                )
+
+            except Exception as e:
+                logger.warning(f"Failed to get stock price for {ticker}: {e}")
+                price = 0
+                pe_ratio = 0
+                peg_ratio = 0
+
+            # Get market cap from ticker details
+            try:
+                details = self.get_ticker_details(ticker)
+                market_cap = details.get("market_cap", 0) / 1_000_000_000  # Convert to billions
+            except Exception:
+                market_cap = 0
+
+            result = {
+                "ticker": ticker,
+                "price": price,
+                "pe_ratio": round(pe_ratio, 2) if pe_ratio else None,
+                "peg_ratio": round(peg_ratio, 2) if peg_ratio else None,
+                "eps": round(basic_eps, 2) if basic_eps else None,
+                "eps_growth": round(eps_growth, 2) if eps_growth else None,
+                "revenue_growth": round(revenue_growth, 2) if revenue_growth else None,
+                "debt_to_equity": round(debt_to_equity, 2) if debt_to_equity else None,
+                "current_ratio": round(current_ratio, 2) if current_ratio else None,
+                "market_cap": round(market_cap, 2) if market_cap else None,
+                "net_income": net_income,
+                "revenues": revenues,
+            }
+
+            logger.info(f"Successfully retrieved financials for {ticker}")
+            return result
+
+        except Timeout:
+            raise APIConnectionError(f"Request timed out after {self.timeout} seconds")
+        except HTTPError as e:
+            raise APIConnectionError(f"HTTP error occurred: {str(e)}")
+        except RequestException as e:
+            raise APIConnectionError(f"Network error occurred: {str(e)}")
+
+    def _get_empty_financials(self, ticker: str) -> Dict[str, Any]:
+        """
+        Return empty financial data structure when no data is available.
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict with None values for all financial metrics
+        """
+        return {
+            "ticker": ticker,
+            "price": None,
+            "pe_ratio": None,
+            "peg_ratio": None,
+            "eps": None,
+            "eps_growth": None,
+            "revenue_growth": None,
+            "debt_to_equity": None,
+            "current_ratio": None,
+            "market_cap": None,
+            "net_income": None,
+            "revenues": None,
+        }
+
+    def get_stock_universe(self, universe_type: str = "popular") -> List[str]:
+        """
+        Get a list of stock tickers to screen.
+
+        Returns a predefined universe of stocks based on the type specified.
+
+        Args:
+            universe_type: Type of stock universe to return. Options:
+                - "popular": Popular large-cap stocks (default)
+                - "sp500_sample": Sample of S&P 500 stocks
+                - "tech": Technology sector stocks
+                - "all": All available stocks (requires premium API tier)
+
+        Returns:
+            List of stock ticker symbols
+
+        Example:
+            >>> provider = MarketDataProvider()
+            >>> tickers = provider.get_stock_universe("popular")
+            >>> len(tickers)
+            50
+        """
+        # Predefined stock universes for screening
+        universes = {
+            "popular": [
+                # Technology
+                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
+                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
+                # Finance
+                "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW",
+                # Healthcare
+                "JNJ", "UNH", "PFE", "ABBV", "TMO", "LLY", "MRK", "ABT",
+                # Consumer
+                "AMZN", "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "COST",
+                # Industrial
+                "BA", "CAT", "HON", "MMM", "GE", "RTX",
+            ],
+            "sp500_sample": [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B",
+                "UNH", "XOM", "JNJ", "JPM", "V", "PG", "MA", "HD", "CVX",
+                "LLY", "ABBV", "MRK", "PEP", "COST", "AVGO", "WMT", "ADBE",
+                "CRM", "MCD", "CSCO", "ACN", "NFLX", "TMO", "ABT", "DHR",
+                "NKE", "BAC", "DIS", "TXN", "VZ", "INTC", "PM", "UPS",
+            ],
+            "tech": [
+                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
+                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
+                "NFLX", "UBER", "SNOW", "PLTR", "COIN", "SQ", "SHOP", "ZM",
+                "TWLO", "CRWD", "NET", "DDOG", "MDB", "FTNT", "PANW",
+            ],
+        }
+
+        if universe_type in universes:
+            logger.info(f"Returning {universe_type} stock universe with {len(universes[universe_type])} tickers")
+            return universes[universe_type]
+
+        # Default to popular stocks
+        logger.warning(f"Unknown universe type '{universe_type}', returning popular stocks")
+        return universes["popular"]
+
     def health_check(self) -> bool:
         """
         Check if the API connection is healthy.

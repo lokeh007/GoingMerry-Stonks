@@ -53,3 +53,18 @@ yarn-error.log*
 
 # Build outputs
 *.log
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+.terraform/
+.terraform.lock.hcl
+tfplan
+*.backup
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
