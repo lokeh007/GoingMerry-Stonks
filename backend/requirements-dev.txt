@@ -14,7 +14,7 @@ httpx==0.25.2
 responses==0.24.1
 
 # Code Quality
-black==23.12.1
+black==24.3.0
 flake8==6.1.0
 mypy==1.7.1
 pylint==3.0.3
