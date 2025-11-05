@@ -90,14 +90,18 @@ class OptionChainResponse(BaseModel):
         calls: List of call option contracts
         puts: List of put option contracts
         total_contracts: Total number of contracts returned
+        available_expirations: List of available expiration dates
         timestamp: Timestamp of the data
+        note: Optional informational message (e.g., free-tier limitations)
     """
     ticker: str = Field(..., description="Underlying stock ticker")
     stock_price: float = Field(..., gt=0, description="Current stock price")
     calls: List[OptionContract] = Field(default_factory=list, description="Call options")
     puts: List[OptionContract] = Field(default_factory=list, description="Put options")
     total_contracts: int = Field(..., ge=0, description="Total number of contracts")
+    available_expirations: List[str] = Field(default_factory=list, description="Available expiration dates (YYYY-MM-DD)")
     timestamp: datetime = Field(default_factory=datetime.now, description="Data timestamp")
+    note: Optional[str] = Field(None, description="Informational message about data limitations")
 
     @field_validator('total_contracts', mode='before')
     @classmethod

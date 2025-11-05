@@ -40,7 +40,9 @@ export interface OptionChainResponse {
   calls: OptionContract[];
   puts: OptionContract[];
   total_contracts: number;
+  available_expirations?: string[];
   timestamp: string;
+  note?: string;
 }
 
 /**

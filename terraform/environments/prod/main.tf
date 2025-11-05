@@ -201,7 +201,7 @@ resource "google_secret_manager_secret_iam_member" "backend_db_url_access" {
   depends_on = [module.database, module.backend]
 }
 
-# Networking module (Load Balancer for Backend API)
+# Networking module (Load Balancer for Backend API and Frontend)
 module "networking" {
   source = "../../modules/networking"
 
@@ -211,6 +211,7 @@ module "networking" {
   application_name = var.application_name
 
   backend_service_name = module.backend.service_name
+  frontend_bucket_name = "sylvan-earth-477020-u6-frontend"
 
   api_domain          = var.api_domain
   enable_ssl          = var.enable_ssl

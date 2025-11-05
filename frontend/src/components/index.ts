@@ -9,3 +9,4 @@ export { default as MetricsDisplay } from './MetricsDisplay';
 export { default as MetricsExample } from './MetricsExample';
 export { default as OptionsAnalyzer } from './OptionsAnalyzer';
 export { default as ProfitLossChart } from './ProfitLossChart';
+export { OptionsFilters } from './OptionsFilters';

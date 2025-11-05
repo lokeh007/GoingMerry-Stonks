@@ -7,6 +7,9 @@ python-dotenv==1.0.1
 # HTTP & API
 requests==2.32.3
 
+# Market Data
+yfinance==0.2.66
+
 # Scientific Computing & Financial Models
 numpy==1.26.4
 scipy==1.11.4

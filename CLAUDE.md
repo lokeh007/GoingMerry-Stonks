@@ -4,9 +4,55 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GoingMerry-Stonks is a full-stack financial analysis platform for options trading and stock screening. The application consists of a FastAPI backend serving market data from Polygon.io and a React/TypeScript frontend for visualization and analysis.
+GoingMerry-Stonks is a **production-deployed** full-stack financial analysis platform for options trading and stock screening. The application consists of a FastAPI backend serving market data from Polygon.io and a React/TypeScript frontend for visualization and analysis.
 
-## Development Setup
+**Production Status**: ✅ Deployed to Google Cloud Platform
+**Environment**: Production (sylvan-earth-477020-u6)
+**Region**: us-east5
+**Live URLs**:
+- Backend API: https://prod-backend-api-rlfl2vcoda-ul.a.run.app/api/docs
+- Frontend: Pending DNS configuration for https://api.goingmerry-stonks.com
+
+---
+
+## Production Architecture
+
+### Current Deployment (November 2025)
+
+```
+Internet → Global Load Balancer (34.8.254.23)
+    ├─ Frontend: Cloud Storage + CDN (React SPA)
+    │  └─ Routes: /* → gs://sylvan-earth-477020-u6-frontend
+    │
+    └─ Backend: Cloud Run (FastAPI)
+       ├─ Routes: /api/*, /options/*, /screener/*, /health
+       ├─ Database: Cloud SQL PostgreSQL 15 (HA enabled)
+       ├─ Secrets: Secret Manager (Polygon API key, DB credentials)
+       └─ Security: Cloud Armor (rate limiting, geo-blocking)
+```
+
+### Infrastructure Components
+
+| Component | Resource Name | Status |
+|-----------|---------------|--------|
+| **Backend Service** | prod-backend-api | ✅ Running (Cloud Run) |
+| **Database** | prod-postgres-d05b2fe9 | ✅ RUNNABLE (PostgreSQL 15) |
+| **Frontend Bucket** | sylvan-earth-477020-u6-frontend | ✅ Active |
+| **Load Balancer** | prod-backend-url-map | ✅ Active |
+| **SSL Certificate** | prod-backend-ssl-cert | ⏳ PROVISIONING |
+| **VPC Connector** | prod-vpc-connector | ✅ Active |
+| **Artifact Registry** | prod-backend | ✅ Active |
+
+### Deployment Method
+
+- **Infrastructure**: Terraform (all resources defined in `terraform/`)
+- **Backend**: Docker → Cloud Run (serverless containers)
+- **Frontend**: npm build → Cloud Storage (static hosting with CDN)
+- **CI/CD**: GitHub Actions + Cloud Build
+
+---
+
+## Local Development Setup
 
 ### Backend (Python/FastAPI)
 
@@ -23,6 +69,9 @@ pip install -r requirements.txt
 # Configure environment variables
 # Create .env file with: POLYGON_API_KEY=your_api_key_here
 
+# Run tests
+pytest --cov --cov-report=term-missing --cov-fail-under=54
+
 # Run development server
 uvicorn app.main:app --reload
 
@@ -38,10 +87,16 @@ cd frontend
 # Install dependencies
 npm install
 
+# Run tests
+npm test
+
 # Run development server
 npm start
-
 # Frontend runs at: http://localhost:3000
+
+# Build for production
+npm run build
+# Output: frontend/build/ directory
 ```
 
 ### Testing
@@ -57,9 +112,15 @@ python backend/test_real_screener.py
 # Test options endpoints
 python backend/test_options_endpoint.py
 
+# Full backend test suite (46 tests, 54% coverage)
+cd backend
+pytest --cov --cov-report=term-missing
+
 # Frontend tests
 cd frontend && npm test
 ```
+
+---
 
 ## Architecture
 
@@ -75,9 +136,12 @@ The backend follows a clean, modular FastAPI architecture with separation of con
   - `options.py` - OptionContract, OptionChainResponse, OptionType enum
   - `screener.py` - StockScreenerResult, ScreenerResponse, ScreenerCriteria
 - **`app/services/`** - Business logic and external integrations
-  - `market_data.py` - **MarketDataProvider class**: Centralized Polygon.io API client with methods for stock quotes, option chains, financials, and ticker details. All external API calls go through this service.
+  - `market_data.py` - **MarketDataProvider class**: Centralized Polygon.io API client
 - **`app/financial_models/`** - Financial calculations
   - `options_pricing.py` - Black-Scholes-Merton pricing model and Greeks calculations
+- **`tests/`** - Test suite (46 tests, 54% coverage)
+  - Unit tests, security tests, integration tests
+  - Quality gates: Black, Flake8, MyPy, Bandit
 
 **Key Integration Point**: The `MarketDataProvider` in `backend/app/services/market_data.py` is the single source of truth for all market data. It handles:
 - Stock quotes and current prices
@@ -105,6 +169,7 @@ The frontend uses a component-based architecture with TypeScript for type safety
 - **`src/types/`** - TypeScript type definitions
   - `options.ts` - OptionData, OptionChainData, StrategyType
   - `metrics.ts` - FinancialMetrics interface
+- **`build/`** - Production build output (135 KB main.js gzipped)
 
 **Data Flow**: API Response → optionsDataTransform → OptionsGrid → User Selection → metricsCalculator + profitLossCalculator → MetricsDisplay + ProfitLossChart
 
@@ -122,6 +187,92 @@ The frontend uses a component-based architecture with TypeScript for type safety
 - **Type Safety**: Full TypeScript coverage with interfaces for all data structures
 - **Separation of Concerns**: Display components (TSX) separate from calculation logic (utils)
 - **Chart.js Integration**: ProfitLossChart uses react-chartjs-2 wrapper with custom options
+
+---
+
+## Production Deployment
+
+### Infrastructure as Code (Terraform)
+
+All infrastructure is managed via Terraform in `terraform/environments/prod/`:
+
+```bash
+cd terraform/environments/prod
+
+# Initialize Terraform
+terraform init
+
+# Preview changes
+terraform plan
+
+# Apply infrastructure changes
+terraform apply
+
+# View outputs (URLs, IPs, connection names)
+terraform output
+```
+
+**Terraform Modules**:
+- `modules/backend/` - Cloud Run service, service account, IAM
+- `modules/database/` - Cloud SQL instance, database, user, secrets
+- `modules/networking/` - Load balancer, CDN, SSL, Cloud Armor
+- `modules/secrets/` - Secret Manager for Polygon API key
+
+**State Management**: Local state file (consider migrating to GCS backend for team collaboration)
+
+### CI/CD Pipelines
+
+**GitHub Actions** (`.github/workflows/deploy.yml`):
+1. Checkout code
+2. Set up Python and run pytest
+3. Build Docker image with multi-stage build
+4. Push to Artifact Registry (us-east5-docker.pkg.dev)
+5. Deploy to Cloud Run
+6. Build frontend (npm run build)
+7. Deploy to Cloud Storage
+
+**Cloud Build** (`cloudbuild.yaml`):
+- Triggered on git push to main
+- Runs test suite in containerized environment
+- Builds production Docker image
+- Deploys to Cloud Run automatically
+
+**Quality Gates**:
+- ✅ All 46 tests must pass
+- ✅ Coverage ≥ 54%
+- ✅ Black formatting check
+- ✅ Flake8 linting (max-line-length=100)
+- ✅ MyPy type checking
+- ✅ Bandit security scan (no critical issues)
+
+### Manual Deployment Commands
+
+```bash
+# Backend deployment
+cd backend
+docker build -t us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0 .
+docker push us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0
+
+gcloud run services update prod-backend-api \
+  --image=us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0 \
+  --region=us-east5
+
+# Frontend deployment (Cloud Storage method)
+cd frontend
+npm run build
+gsutil -m rsync -r -d build gs://sylvan-earth-477020-u6-frontend
+
+# Frontend deployment (Firebase Hosting method - alternative)
+cd frontend
+npm run build
+firebase deploy --only hosting --project goingmerry-stonks
+```
+
+**Note**: Two frontend hosting options are available:
+1. **Cloud Storage + Load Balancer** (currently active) - Better GCP integration
+2. **Firebase Hosting** (alternative) - Simpler deployment, Firebase features
+
+---
 
 ## Alpha Engine - Stock Screener
 
@@ -147,6 +298,8 @@ See `_calculate_lynch_score()` in `backend/app/routers/screener.py:352` for impl
 - `sp500_sample`: 41 S&P 500 constituents
 - `tech`: 31 technology sector stocks
 
+---
+
 ## Options Analysis Components
 
 **Supported Strategies** (in `frontend/src/utils/metricsCalculator.ts`):
@@ -164,6 +317,8 @@ See `_calculate_lynch_score()` in `backend/app/routers/screener.py:352` for impl
 - Hover tooltips showing exact P/L at each price point
 - Breakeven markers with vertical dashed lines
 
+---
+
 ## Environment Configuration
 
 ### Backend `.env` File (required)
@@ -177,13 +332,49 @@ POLYGON_API_KEY=your_polygon_api_key_here
 - Options snapshots are rate-limited (limited to 50 contracts in `get_option_chain()`)
 - Financials endpoint requires paid tier for real-time data
 
-### Frontend Proxy
+### Production Secrets (Secret Manager)
 
-`package.json` includes `"proxy": "http://localhost:8000"` to avoid CORS issues during development.
+All production credentials are stored in Google Secret Manager:
+- `prod-polygon-api-key` - Polygon.io API key
+- `prod-db-password` - PostgreSQL database password
+- `prod-database-url` - Full database connection string
+
+Backend service account has `secretmanager.secretAccessor` role for these secrets.
+
+### Frontend Environment Variables
+
+**Development** (`frontend/.env.development`):
+```bash
+REACT_APP_API_URL=http://localhost:8000
+```
+
+**Production** (`frontend/.env.production`):
+```bash
+REACT_APP_API_URL=/api
+NODE_ENV=production
+GENERATE_SOURCEMAP=false
+```
+
+Production uses relative URLs (`/api/*`) which are routed by the load balancer to the backend service.
 
 ### CORS Configuration
 
-Backend allows `http://localhost:3000` by default. Modify in `backend/app/main.py:25-31` for production.
+Backend allows requests from configured origins. Modify in `backend/app/main.py:25-31`:
+
+```python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # Development
+        "https://api.goingmerry-stonks.com",  # Production
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+```
+
+---
 
 ## Common Development Tasks
 
@@ -194,6 +385,7 @@ Backend allows `http://localhost:3000` by default. Modify in `backend/app/main.p
 3. Implement scoring function similar to `_calculate_lynch_score()`
 4. Add to `/screener/screeners` endpoint list
 5. Document criteria and scoring in `backend/ALPHA_ENGINE_GUIDE.md`
+6. Write tests in `backend/tests/test_screener.py`
 
 ### Adding a New Options Strategy
 
@@ -201,44 +393,320 @@ Backend allows `http://localhost:3000` by default. Modify in `backend/app/main.p
 2. Implement P/L calculation in `frontend/src/utils/profitLossCalculator.ts`
 3. Add metrics calculation in `frontend/src/utils/metricsCalculator.ts`
 4. Update strategy selector in `OptionsAnalyzer.tsx`
+5. Write tests for the new strategy
 
-### Debugging API Issues
+### Debugging Production Issues
 
-- Check Polygon.io API key in `.env`
-- Monitor rate limits in backend logs
-- Use `python backend/test_api.py` to verify connectivity
-- Check API docs at http://localhost:8000/api/docs for request/response schemas
+**Check Cloud Run logs**:
+```bash
+# View recent logs
+gcloud run services logs read prod-backend-api --region=us-east5 --limit=100
 
-### Working with Financial Data
+# Tail logs in real-time
+gcloud run services logs tail prod-backend-api --region=us-east5
 
-All financial calculations should use the data returned by `MarketDataProvider.get_stock_financials()`. This method:
-- Fetches 4 quarters of financial statements from Polygon.io
-- Calculates growth rates (EPS, revenue) comparing Q0 vs Q-4
-- Computes ratios (P/E, PEG, D/E, current ratio)
-- Returns None for missing data (handle gracefully in screening logic)
+# Filter by severity
+gcloud logging read "resource.type=cloud_run_revision AND severity>=ERROR" --limit=50
+```
 
-Growth rate calculation: `((current - old) / abs(old)) * 100`
+**Check database status**:
+```bash
+# Database instance status
+gcloud sql instances describe prod-postgres-d05b2fe9
+
+# Connect to database
+gcloud sql connect prod-postgres-d05b2fe9 --user=app_user --database=goingmerry_stonks
+```
+
+**Check Cloud Run metrics**:
+```bash
+# Service details
+gcloud run services describe prod-backend-api --region=us-east5
+
+# Revisions
+gcloud run revisions list --service=prod-backend-api --region=us-east5
+```
+
+### Updating Infrastructure
+
+```bash
+cd terraform/environments/prod
+
+# Make changes to *.tf files
+
+# Preview changes
+terraform plan
+
+# Apply changes
+terraform apply
+
+# View outputs
+terraform output
+```
+
+**Important**: Always run `terraform plan` before `terraform apply` to review changes.
+
+### Deploying Frontend Updates
+
+**Option 1: Cloud Storage (current method)**
+```bash
+cd frontend
+npm run build
+gsutil -m rsync -r -d build gs://sylvan-earth-477020-u6-frontend
+
+# Invalidate CDN cache (if needed)
+gcloud compute url-maps invalidate-cdn-cache prod-backend-url-map --path="/*"
+```
+
+**Option 2: Firebase Hosting (alternative)**
+```bash
+cd frontend
+npm run build
+firebase deploy --only hosting --project goingmerry-stonks
+```
+
+### Working with Secrets
+
+```bash
+# View secret metadata
+gcloud secrets describe prod-polygon-api-key
+
+# Access secret value (requires secretAccessor role)
+gcloud secrets versions access latest --secret=prod-polygon-api-key
+
+# Update secret
+echo -n "new_value" | gcloud secrets versions add prod-polygon-api-key --data-file=-
+
+# Grant access to service account
+gcloud secrets add-iam-policy-binding prod-polygon-api-key \
+  --member="serviceAccount:prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+---
+
+## Testing Infrastructure
+
+### Backend Testing (pytest)
+
+**Test Categories**:
+- Unit tests: 44 tests (core functionality)
+- Security tests: 3 tests (input validation, injection prevention)
+- Integration tests: 2 tests (skipped in CI, require production API key)
+
+**Coverage Requirements**:
+- Minimum: 54% (enforced by CI/CD)
+- Target: 70%+ (future goal)
+
+**Running Tests**:
+```bash
+cd backend
+
+# All tests
+pytest
+
+# With coverage report
+pytest --cov --cov-report=term-missing --cov-report=html
+
+# Specific test file
+pytest tests/test_screener.py -v
+
+# Skip integration tests
+pytest -m "not integration"
+
+# Quality checks
+black app/ tests/           # Format code
+flake8 app/ tests/          # Lint code
+mypy app/                   # Type check
+bandit -r app/              # Security scan
+```
+
+### Frontend Testing (Jest + React Testing Library)
+
+```bash
+cd frontend
+
+# Run tests
+npm test
+
+# Run with coverage
+npm test -- --coverage
+
+# Update snapshots
+npm test -- -u
+
+# Run specific test file
+npm test -- MetricsDisplay.test.tsx
+```
+
+### Load Testing (Production)
+
+```bash
+# Simple load test with curl
+for i in {1..100}; do
+  curl https://api.goingmerry-stonks.com/health &
+done
+wait
+
+# Check Cloud Run auto-scaling
+gcloud run services describe prod-backend-api --region=us-east5 --format="value(status.conditions)"
+```
+
+---
+
+## Monitoring & Observability
+
+### Cloud Monitoring Alerts
+
+Configured alerts (email: brian.boatright@gmail.com):
+1. **High Error Rate**: >5% 5xx errors over 5 minutes
+2. **High Latency**: P95 latency >2 seconds
+3. **Database High Connections**: >80% of max connections
+
+### Key Metrics to Monitor
+
+- **Request Count**: `run.googleapis.com/request_count`
+- **Request Latency**: `run.googleapis.com/request_latencies`
+- **Error Rate**: `run.googleapis.com/request_count` (filtered by 5xx)
+- **Database Connections**: `cloudsql.googleapis.com/database/postgresql/num_backends`
+- **CPU Utilization**: `run.googleapis.com/container/cpu/utilizations`
+- **Memory Utilization**: `run.googleapis.com/container/memory/utilizations`
+
+### Viewing Metrics
+
+```bash
+# Cloud Run metrics dashboard
+gcloud monitoring dashboards list
+
+# Query specific metric
+gcloud monitoring time-series list \
+  --filter='metric.type="run.googleapis.com/request_count"' \
+  --format="table(metric.type, resource.labels.service_name)"
+```
+
+---
+
+## Security Considerations
+
+### Production Security Features
+
+- ✅ **Cloud Armor**: Rate limiting (100 req/min per IP), geo-blocking (Russia), SQL injection protection, XSS protection
+- ✅ **Secret Manager**: All credentials encrypted at rest (AES-256)
+- ✅ **IAM Least Privilege**: Service accounts have minimal required permissions
+- ✅ **VPC Isolation**: Database on private VPC, no public IP
+- ✅ **SSL/TLS**: Managed certificates with auto-renewal
+- ✅ **HTTPS Enforcement**: HTTP → HTTPS redirect
+- ✅ **Container Scanning**: Automated vulnerability scanning in Artifact Registry
+- ✅ **Audit Logging**: All API calls and admin actions logged
+
+### Security Best Practices
+
+1. **Never commit sensitive data**:
+   - `.env` files (in .gitignore)
+   - `terraform.tfvars` files (in .gitignore)
+   - API keys or passwords
+   - Service account keys
+
+2. **Use Secret Manager** for all production credentials
+
+3. **Follow least privilege**:
+   - Service accounts have only necessary permissions
+   - Cloud Run ingress: Load Balancer only (no public access)
+
+4. **Regular updates**:
+   - Keep dependencies updated (`pip list --outdated`, `npm outdated`)
+   - Monitor security advisories (Dependabot, Snyk)
+
+---
 
 ## File Naming and Organization
 
-- Backend: Snake_case for Python files (`market_data.py`, `options_pricing.py`)
-- Frontend: PascalCase for components (`OptionsGrid.tsx`), camelCase for utilities (`metricsCalculator.ts`)
-- Models match their domain: `options.py` for options models, `screener.py` for screener models
-- Test files prefixed with `test_` and colocated in `backend/` directory
+- **Backend**: Snake_case for Python files (`market_data.py`, `options_pricing.py`)
+- **Frontend**: PascalCase for components (`OptionsGrid.tsx`), camelCase for utilities (`metricsCalculator.ts`)
+- **Models**: Match their domain (`options.py` for options models, `screener.py` for screener models)
+- **Test files**: Prefixed with `test_` and colocated in `backend/tests/` directory
+- **Infrastructure**: Terraform files in `terraform/` with modules structure
 
-## Important Notes
+---
 
-- **Never commit `.env` files**: Contains API keys
-- **Polygon.io Limitations**: Free tier has strict rate limits; consider caching for production
-- **Options Data**: Option snapshots may be incomplete for low-volume contracts
+## Important Notes for Development
+
+- **Polygon.io Rate Limits**: Free tier has strict limits (5 calls/min); implement caching for production
+- **Cloud Run Cold Starts**: First request after idle may be slow; min_instances=1 configured
+- **Database Connections**: Cloud SQL has connection limits; use connection pooling
 - **Type Safety**: Always define TypeScript interfaces for new data structures
 - **Error Handling**: Backend uses custom exceptions; frontend should handle HTTP errors gracefully
 - **Logging**: Use `logger.info()` for key operations, `logger.warning()` for recoverable errors, `logger.error()` for failures
+- **Testing**: Write tests for new features; maintain ≥54% coverage
+- **Documentation**: Update relevant .md files when adding features
+
+---
+
+## Production URLs & Access
+
+### Public URLs
+- **API Documentation**: https://prod-backend-api-rlfl2vcoda-ul.a.run.app/api/docs
+- **API Base URL**: https://api.goingmerry-stonks.com (pending DNS)
+- **Frontend**: https://api.goingmerry-stonks.com (pending DNS)
+- **Load Balancer IP**: 34.8.254.23
+
+### GCP Console Links
+- **Cloud Run**: https://console.cloud.google.com/run?project=sylvan-earth-477020-u6
+- **Cloud SQL**: https://console.cloud.google.com/sql/instances?project=sylvan-earth-477020-u6
+- **Load Balancing**: https://console.cloud.google.com/net-services/loadbalancing?project=sylvan-earth-477020-u6
+- **Cloud Storage**: https://console.cloud.google.com/storage/browser?project=sylvan-earth-477020-u6
+- **Secret Manager**: https://console.cloud.google.com/security/secret-manager?project=sylvan-earth-477020-u6
+- **Logs**: https://console.cloud.google.com/logs?project=sylvan-earth-477020-u6
+- **Monitoring**: https://console.cloud.google.com/monitoring?project=sylvan-earth-477020-u6
+
+---
 
 ## Additional Documentation
 
-- `backend/ALPHA_ENGINE_GUIDE.md` - Comprehensive screener documentation with examples
-- `frontend/COMPONENTS.md` - Component API reference
-- `frontend/INTEGRATION_GUIDE.md` - Frontend integration patterns
-- `frontend/PROFIT_LOSS_CHART_GUIDE.md` - P/L chart usage and customization
-- API Interactive Docs: http://localhost:8000/api/docs (Swagger UI)
+- **[README.md](README.md)** - Comprehensive project overview and getting started guide
+- **[TESTING.md](TESTING.md)** - Complete testing infrastructure documentation
+- **[DEPLOYMENT_STATUS.md](DEPLOYMENT_STATUS.md)** - Current deployment status and verification
+- **[FRONTEND_DEPLOYMENT.md](FRONTEND_DEPLOYMENT.md)** - Frontend deployment details (Cloud Storage vs Firebase)
+- **[backend/ALPHA_ENGINE_GUIDE.md](backend/ALPHA_ENGINE_GUIDE.md)** - Stock screener documentation
+- **[frontend/COMPONENTS.md](frontend/COMPONENTS.md)** - Component API reference
+- **[frontend/INTEGRATION_GUIDE.md](frontend/INTEGRATION_GUIDE.md)** - Frontend integration patterns
+- **[frontend/PROFIT_LOSS_CHART_GUIDE.md](frontend/PROFIT_LOSS_CHART_GUIDE.md)** - P/L chart usage and customization
+
+---
+
+## Quick Reference Commands
+
+```bash
+# Local development
+cd backend && source venv/bin/activate && uvicorn app.main:app --reload
+cd frontend && npm start
+
+# Run tests
+cd backend && pytest --cov
+cd frontend && npm test
+
+# Build for production
+cd backend && docker build -t api:latest .
+cd frontend && npm run build
+
+# Deploy backend
+gcloud run deploy prod-backend-api --image=IMAGE_URL --region=us-east5
+
+# Deploy frontend (Cloud Storage)
+gsutil -m rsync -r -d frontend/build gs://sylvan-earth-477020-u6-frontend
+
+# Deploy frontend (Firebase)
+firebase deploy --only hosting --project goingmerry-stonks
+
+# View logs
+gcloud run services logs tail prod-backend-api --region=us-east5
+
+# Infrastructure updates
+cd terraform/environments/prod && terraform plan && terraform apply
+```
+
+---
+
+**Last Updated**: November 3, 2025
+**Production Status**: ✅ Deployed and operational (pending DNS configuration)
+**Test Coverage**: 54% (46/46 tests passing)

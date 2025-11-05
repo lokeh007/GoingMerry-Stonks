@@ -24,15 +24,22 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React default port
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "https://goingmerry-stonks.web.app",  # Firebase Hosting
+        "https://goingmerry-stonks.firebaseapp.com",  # Firebase Hosting (alternative domain)
+        "https://api.goingmerry-stonks.com",  # Custom domain (once DNS configured)
+        "http://34.8.254.23",  # Load Balancer IP
+        "https://34.8.254.23",  # Load Balancer IP (HTTPS)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(options.router)
-app.include_router(screener.router)
+# Include routers with /api prefix for load balancer routing
+app.include_router(options.router, prefix="/api")
+app.include_router(screener.router, prefix="/api")
 
 
 @app.get("/", tags=["Health"])

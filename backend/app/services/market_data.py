@@ -1,8 +1,9 @@
 """
 Market Data Service Module.
 
-This module provides integration with Polygon.io API for real-time and
-historical market data retrieval.
+This module provides integration with Polygon.io API and yfinance for
+market data retrieval. Uses yfinance for option chain data (free, 15-min delay)
+and Polygon.io for stock quotes and fundamentals.
 """
 
 import os
@@ -12,6 +13,7 @@ import logging
 
 import requests
 from requests.exceptions import RequestException, Timeout, HTTPError
+import yfinance as yf
 
 
 # Configure logging
@@ -115,9 +117,10 @@ class MarketDataProvider:
 
         ticker = ticker.upper().strip()
 
-        # Construct API endpoint
-        endpoint = f"{self.base_url}/v2/snapshot/locale/us/markets/stocks/tickers/{ticker}"
-        params = {"apiKey": self.api_key}
+        # Construct API endpoint - Using free-tier compatible endpoint
+        # /v2/aggs/ticker/{ticker}/prev returns previous day's data (15-min delayed)
+        endpoint = f"{self.base_url}/v2/aggs/ticker/{ticker}/prev"
+        params = {"apiKey": self.api_key, "adjusted": "true"}
 
         try:
             logger.info(f"Fetching quote for ticker: {ticker}")
@@ -154,40 +157,44 @@ class MarketDataProvider:
                     f"API returned non-OK status: {data.get('status')}"
                 )
 
-            ticker_data = data.get("ticker")
-            if not ticker_data:
-                raise MarketDataError("No ticker data found in API response")
+            results = data.get("results")
+            if not results or len(results) == 0:
+                raise MarketDataError("No price data found in API response")
 
-            # Extract quote information
-            last_quote = ticker_data.get("lastQuote", {})
-            last_trade = ticker_data.get("lastTrade", {})
-            day_data = ticker_data.get("day", {})
-            prev_day = ticker_data.get("prevDay", {})
+            # Extract aggregate data for previous day
+            agg_data = results[0]
 
-            # Get the latest price (prefer last trade, fallback to last quote)
-            price = last_trade.get("p") or last_quote.get("p")
+            # Get close price as current price (most recent available)
+            price = agg_data.get("c")
             if price is None:
                 raise MarketDataError("Unable to extract price from API response")
 
-            # Calculate change from previous close
-            prev_close = prev_day.get("c", 0)
-            change = price - prev_close if prev_close else 0
-            change_percent = (change / prev_close * 100) if prev_close else 0
+            # Extract OHLCV data
+            open_price = agg_data.get("o", 0)
+            high_price = agg_data.get("h", 0)
+            low_price = agg_data.get("l", 0)
+            volume = agg_data.get("v", 0)
+
+            # Calculate change (close - open for the day)
+            change = price - open_price if open_price else 0
+            change_percent = (change / open_price * 100) if open_price else 0
+
+            # Get timestamp
+            timestamp_ms = agg_data.get("t", 0)
+            timestamp = datetime.fromtimestamp(timestamp_ms / 1000).isoformat() if timestamp_ms else datetime.now().isoformat()
 
             # Construct response
             quote_data = {
                 "ticker": ticker,
                 "price": round(price, 2),
-                "timestamp": datetime.fromtimestamp(
-                    last_trade.get("t", 0) / 1000
-                ).isoformat() if last_trade.get("t") else datetime.now().isoformat(),
-                "volume": day_data.get("v", 0),
+                "timestamp": timestamp,
+                "volume": volume,
                 "change": round(change, 2),
                 "change_percent": round(change_percent, 2),
-                "previous_close": prev_close,
-                "day_high": day_data.get("h"),
-                "day_low": day_data.get("l"),
-                "day_open": day_data.get("o"),
+                "previous_close": round(open_price, 2),
+                "day_high": round(high_price, 2) if high_price else None,
+                "day_low": round(low_price, 2) if low_price else None,
+                "day_open": round(open_price, 2) if open_price else None,
             }
 
             logger.info(
@@ -218,32 +225,37 @@ class MarketDataProvider:
         self,
         ticker: str,
         expiration_date: Optional[str] = None,
+        atm_strikes: Optional[int] = None,
         limit: int = 250
     ) -> Dict[str, Any]:
         """
-        Get the option chain for a given ticker symbol.
+        Get the option chain for a given ticker symbol using yfinance.
 
-        Retrieves available option contracts (both calls and puts) for the
-        specified underlying stock ticker.
+        Uses yfinance (free, 15-min delayed data) to retrieve option contracts
+        with pricing, volume, open interest, and Greeks. Much faster than Polygon.io
+        snapshot calls and provides real data.
 
         Args:
             ticker: Stock ticker symbol (e.g., 'AAPL', 'TSLA').
             expiration_date: Optional expiration date filter (YYYY-MM-DD format).
-                           If not provided, returns contracts for all expirations.
-            limit: Maximum number of contracts to return (default: 250, max: 1000).
+                           If not provided, returns contracts for nearest expiration.
+            atm_strikes: Optional filter for strikes around current price.
+                        If provided, only returns contracts within range.
+            limit: Maximum number of contracts to return (default: 250).
 
         Returns:
             Dict containing:
                 - ticker (str): The underlying ticker symbol
                 - stock_price (float): Current stock price
-                - contracts (List[Dict]): List of option contracts with details
+                - calls (List[Dict]): Call option contracts
+                - puts (List[Dict]): Put option contracts
                 - total_contracts (int): Total number of contracts returned
+                - available_expirations (List[str]): Available expiration dates
+                - note (str): Optional note about data source
 
         Raises:
             InvalidTickerError: If the ticker symbol is invalid or not found.
-            APIConnectionError: If unable to connect to the API.
-            RateLimitError: If API rate limit is exceeded.
-            MarketDataError: For other API-related errors.
+            MarketDataError: For other errors.
 
         Example:
             >>> provider = MarketDataProvider()
@@ -256,148 +268,196 @@ class MarketDataProvider:
 
         ticker = ticker.upper().strip()
 
-        # First, get the current stock price
         try:
-            stock_data = self.get_stock_quote(ticker)
-            stock_price = stock_data["price"]
-        except Exception as e:
-            logger.error(f"Failed to get stock price for {ticker}: {e}")
-            raise
+            logger.info(f"Fetching option chain for {ticker} using yfinance")
 
-        # Construct options API endpoint
-        endpoint = f"{self.base_url}/v3/reference/options/contracts"
-        params = {
-            "underlying_ticker": ticker,
-            "limit": min(limit, 1000),  # API max is 1000
-            "apiKey": self.api_key,
-        }
+            # Get stock object and current price
+            stock = yf.Ticker(ticker)
 
-        # Add expiration date filter if provided
-        if expiration_date:
-            params["expiration_date"] = expiration_date
+            # Get current stock price from Polygon.io (fast, works on free tier)
+            try:
+                stock_data = self.get_stock_quote(ticker)
+                stock_price = stock_data["price"]
+            except Exception:
+                # Fallback to yfinance if Polygon.io fails
+                try:
+                    info = stock.info
+                    stock_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+                    if not stock_price:
+                        raise MarketDataError(f"Unable to retrieve stock price for {ticker}")
+                except Exception as e:
+                    raise MarketDataError(f"Unable to retrieve stock price for {ticker}: {e}")
 
-        try:
-            logger.info(f"Fetching option chain for ticker: {ticker}")
-
-            # Make API request
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
-
-            # Handle HTTP errors
-            if response.status_code == 404:
+            # Get available expiration dates
+            expirations = stock.options
+            if not expirations:
                 raise InvalidTickerError(
                     f"No options found for ticker '{ticker}'. "
                     "The ticker may not have listed options."
                 )
-            elif response.status_code == 429:
-                raise RateLimitError(
-                    "API rate limit exceeded. Please try again later."
-                )
-            elif response.status_code == 403:
-                raise APIConnectionError(
-                    "API authentication failed. Please check your API key."
-                )
 
-            response.raise_for_status()
+            # Convert expiration dates to YYYY-MM-DD format
+            available_expirations = list(expirations)
 
-            # Parse response
-            data = response.json()
+            # Select which expiration(s) to fetch
+            if expiration_date:
+                # Filter to specific expiration
+                if expiration_date in available_expirations:
+                    expirations_to_fetch = [expiration_date]
+                else:
+                    raise InvalidTickerError(
+                        f"Expiration date {expiration_date} not available for {ticker}. "
+                        f"Available: {', '.join(available_expirations[:5])}"
+                    )
+            else:
+                # Fetch first 3 expirations for diversity
+                expirations_to_fetch = available_expirations[:3]
 
-            # Validate response structure
-            if data.get("status") != "OK":
-                raise MarketDataError(
-                    f"API returned non-OK status: {data.get('status')}"
-                )
+            # Fetch option chains for selected expirations
+            all_calls = []
+            all_puts = []
 
-            contracts = data.get("results", [])
+            for exp_date in expirations_to_fetch:
+                try:
+                    opt_chain = stock.option_chain(exp_date)
 
-            # For each contract, get snapshot data for pricing info
-            enriched_contracts = []
-            for contract in contracts[:50]:  # Limit to avoid too many requests
-                contract_ticker = contract.get("ticker")
-                if not contract_ticker:
+                    # Helper function to safely convert values, handling NaN
+                    import pandas as pd
+
+                    def safe_float(val):
+                        """Convert to float, return None if NaN or missing."""
+                        if val is None or pd.isna(val):
+                            return None
+                        try:
+                            return float(val)
+                        except (ValueError, TypeError):
+                            return None
+
+                    def safe_int(val):
+                        """Convert to int, return None if NaN or missing."""
+                        if val is None or pd.isna(val):
+                            return None
+                        try:
+                            return int(val)
+                        except (ValueError, TypeError):
+                            return None
+
+                    # Process calls
+                    calls_df = opt_chain.calls
+                    for _, row in calls_df.iterrows():
+                        call_contract = {
+                            "ticker": row.get('contractSymbol', ''),
+                            "strike": float(row.get('strike', 0)),
+                            "expiration_date": exp_date,
+                            "option_type": "call",
+                            "last_price": safe_float(row.get('lastPrice')),
+                            "bid": safe_float(row.get('bid')),
+                            "ask": safe_float(row.get('ask')),
+                            "volume": safe_int(row.get('volume')),
+                            "open_interest": safe_int(row.get('openInterest')),
+                            "implied_volatility": safe_float(row.get('impliedVolatility')),
+                        }
+                        all_calls.append(call_contract)
+
+                    # Process puts
+                    puts_df = opt_chain.puts
+                    for _, row in puts_df.iterrows():
+                        put_contract = {
+                            "ticker": row.get('contractSymbol', ''),
+                            "strike": float(row.get('strike', 0)),
+                            "expiration_date": exp_date,
+                            "option_type": "put",
+                            "last_price": safe_float(row.get('lastPrice')),
+                            "bid": safe_float(row.get('bid')),
+                            "ask": safe_float(row.get('ask')),
+                            "volume": safe_int(row.get('volume')),
+                            "open_interest": safe_int(row.get('openInterest')),
+                            "implied_volatility": safe_float(row.get('impliedVolatility')),
+                        }
+                        all_puts.append(put_contract)
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch options for {ticker} expiring {exp_date}: {e}")
                     continue
 
-                # Get contract snapshot for pricing data
-                try:
-                    snapshot = self._get_option_snapshot(contract_ticker)
-                    enriched_contract = {
-                        "ticker": contract_ticker,
-                        "strike": contract.get("strike_price"),
-                        "expiration_date": contract.get("expiration_date"),
-                        "option_type": contract.get("contract_type", "").lower(),
-                        "last_price": snapshot.get("last_price"),
-                        "bid": snapshot.get("bid"),
-                        "ask": snapshot.get("ask"),
-                        "volume": snapshot.get("volume"),
-                        "open_interest": snapshot.get("open_interest"),
-                        "implied_volatility": snapshot.get("implied_volatility"),
-                        "delta": snapshot.get("delta"),
-                        "gamma": snapshot.get("gamma"),
-                        "theta": snapshot.get("theta"),
-                        "vega": snapshot.get("vega"),
-                    }
-                    enriched_contracts.append(enriched_contract)
-                except Exception as e:
-                    logger.warning(f"Failed to get snapshot for {contract_ticker}: {e}")
-                    # Add contract with basic info even if snapshot fails
-                    enriched_contracts.append({
-                        "ticker": contract_ticker,
-                        "strike": contract.get("strike_price"),
-                        "expiration_date": contract.get("expiration_date"),
-                        "option_type": contract.get("contract_type", "").lower(),
-                    })
+            # Combine all contracts
+            all_contracts = all_calls + all_puts
 
-            # Separate into calls and puts
-            calls = [c for c in enriched_contracts if c.get("option_type") == "call"]
-            puts = [c for c in enriched_contracts if c.get("option_type") == "put"]
+            # Filter by ATM strikes if requested
+            if atm_strikes and stock_price:
+                filtered_calls = []
+                filtered_puts = []
+
+                for contract in all_calls:
+                    strike = contract.get("strike")
+                    if strike:
+                        strike_diff_pct = abs(strike - stock_price) / stock_price * 100
+                        if strike_diff_pct <= (atm_strikes * 3):
+                            filtered_calls.append(contract)
+
+                for contract in all_puts:
+                    strike = contract.get("strike")
+                    if strike:
+                        strike_diff_pct = abs(strike - stock_price) / stock_price * 100
+                        if strike_diff_pct <= (atm_strikes * 3):
+                            filtered_puts.append(contract)
+
+                all_calls = filtered_calls
+                all_puts = filtered_puts
+                all_contracts = all_calls + all_puts
+
+                logger.info(f"Filtered to {len(all_contracts)} contracts around ATM price ${stock_price}")
+
+            # Apply limit
+            if len(all_contracts) > limit:
+                # Distribute limit between calls and puts proportionally
+                call_ratio = len(all_calls) / len(all_contracts) if all_contracts else 0.5
+                call_limit = int(limit * call_ratio)
+                put_limit = limit - call_limit
+
+                all_calls = all_calls[:call_limit]
+                all_puts = all_puts[:put_limit]
+                all_contracts = all_calls + all_puts
 
             result = {
                 "ticker": ticker,
                 "stock_price": stock_price,
-                "calls": calls,
-                "puts": puts,
-                "contracts": enriched_contracts,
-                "total_contracts": len(enriched_contracts),
+                "calls": all_calls,
+                "puts": all_puts,
+                "contracts": all_contracts,
+                "total_contracts": len(all_contracts),
+                "available_expirations": available_expirations[:10],
+                "note": "Data provided by yfinance (15-minute delayed). Free and unlimited!"
             }
 
             logger.info(
-                f"Successfully retrieved {len(enriched_contracts)} option contracts "
-                f"for {ticker}"
+                f"Successfully retrieved {len(all_contracts)} option contracts "
+                f"for {ticker} ({len(all_calls)} calls, {len(all_puts)} puts)"
             )
 
             return result
 
-        except Timeout:
-            raise APIConnectionError(
-                f"Request timed out after {self.timeout} seconds. "
-                "Please check your connection and try again."
-            )
-        except HTTPError as e:
-            raise APIConnectionError(
-                f"HTTP error occurred: {str(e)}"
-            )
-        except RequestException as e:
-            raise APIConnectionError(
-                f"Network error occurred: {str(e)}"
-            )
-        except (KeyError, ValueError, TypeError) as e:
+        except InvalidTickerError:
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching option chain for {ticker}: {e}")
             raise MarketDataError(
-                f"Error parsing API response: {str(e)}"
+                f"Error fetching option chain for {ticker}: {str(e)}"
             )
 
     def _get_option_snapshot(self, option_ticker: str) -> Dict[str, Any]:
         """
         Get snapshot data for a specific option contract.
 
+        Note: This endpoint requires a paid Polygon.io subscription.
+        Free tier users will receive contract metadata without pricing/Greeks.
+
         Args:
             option_ticker: The option contract ticker (e.g., 'O:AAPL250117C00150000')
 
         Returns:
-            Dict containing snapshot data with pricing and Greeks.
+            Dict containing snapshot data with pricing and Greeks (if available).
+            Returns empty dict for free-tier users.
 
         Raises:
             MarketDataError: If unable to fetch snapshot data.
@@ -412,10 +472,25 @@ class MarketDataProvider:
                 timeout=self.timeout
             )
 
+            # Handle free tier limitation (403 Forbidden)
+            if response.status_code == 403:
+                logger.debug(
+                    f"Options snapshot not available (requires paid plan): {option_ticker}"
+                )
+                return {}
+
             if response.status_code != 200:
                 return {}
 
             data = response.json()
+
+            # Check for NOT_AUTHORIZED status in response body
+            if data.get("status") == "NOT_AUTHORIZED":
+                logger.debug(
+                    "Options pricing requires paid Polygon.io subscription"
+                )
+                return {}
+
             results = data.get("results", {})
 
             # Extract relevant fields

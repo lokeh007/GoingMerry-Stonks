@@ -197,7 +197,7 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
         labels: {
           font: {
             size: 13,
-            weight: '600',
+            weight: 600,
           },
           color: '#333',
         },
@@ -207,7 +207,7 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
         text: title || `${getStrategyDisplayName(strategyParams.type)} - P/L at Expiration`,
         font: {
           size: 18,
-          weight: '700',
+          weight: 'bold',
         },
         color: '#1a1a1a',
         padding: {
@@ -230,7 +230,7 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
             return `Stock Price: $${items[0].label}`;
           },
           label: (item) => {
-            const value = item.parsed.y;
+            const value = item.parsed.y ?? 0;
             return `P/L: ${formatPLCurrency(value)}`;
           },
         },
@@ -244,7 +244,7 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
           text: 'Stock Price at Expiration',
           font: {
             size: 14,
-            weight: '600',
+            weight: 600,
           },
           color: '#555',
         },
@@ -274,7 +274,7 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
           text: 'Profit / Loss ($)',
           font: {
             size: 14,
-            weight: '600',
+            weight: 600,
           },
           color: '#555',
         },

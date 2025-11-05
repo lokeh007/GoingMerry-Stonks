@@ -11,7 +11,7 @@ import { OptionChainResponse, OptionContract, GridData, GridCellData } from '../
  * Calculate net credit for an option position.
  *
  * Net credit represents the premium received when selling an option.
- * Uses the bid price (what you'd receive) as the net credit.
+ * Prioritizes bid price, but falls back to last_price when bid is 0 or unavailable.
  *
  * @param contract - Option contract data
  * @returns Net credit value or null if unavailable
@@ -20,17 +20,26 @@ export const calculateNetCredit = (contract?: OptionContract): number | null => 
   if (!contract) return null;
 
   // Net credit is the bid price (what you receive when selling)
-  if (contract.bid !== undefined && contract.bid !== null) {
+  // But only if bid > 0 (many illiquid options have 0 bid)
+  if (contract.bid !== undefined && contract.bid !== null && contract.bid > 0) {
     return contract.bid;
   }
 
-  // Fallback to mid-price if bid not available
-  if (contract.ask !== undefined && contract.last_price !== undefined) {
-    return (contract.ask + contract.last_price) / 2;
+  // Fallback to last price (more reliable for display)
+  if (contract.last_price !== undefined && contract.last_price !== null) {
+    return contract.last_price;
   }
 
-  // Fallback to last price
-  return contract.last_price ?? null;
+  // Fallback to mid-price if available
+  if (contract.ask !== undefined && contract.ask !== null && contract.ask > 0) {
+    if (contract.bid !== undefined && contract.bid !== null) {
+      return (contract.ask + contract.bid) / 2;
+    }
+    return contract.ask;
+  }
+
+  // Last resort: return 0 bid if that's all we have
+  return contract.bid ?? null;
 };
 
 /**

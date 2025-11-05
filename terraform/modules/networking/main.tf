@@ -67,11 +67,55 @@ resource "google_compute_backend_service" "backend" {
   # Cloud Run has built-in health checking and request timeout management
 }
 
-# URL map for API
+# Backend bucket for frontend static files
+resource "google_compute_backend_bucket" "frontend" {
+  count       = var.frontend_bucket_name != "" ? 1 : 0
+  name        = "${var.environment}-frontend-backend-bucket"
+  project     = var.project_id
+  bucket_name = var.frontend_bucket_name
+  enable_cdn  = true
+
+  cdn_policy {
+    cache_mode        = "CACHE_ALL_STATIC"
+    client_ttl        = 3600
+    default_ttl       = 3600
+    max_ttl           = 86400
+    negative_caching  = true
+    serve_while_stale = 86400
+  }
+}
+
+# URL map for API and Frontend
 resource "google_compute_url_map" "backend" {
   name            = "${var.environment}-backend-url-map"
   project         = var.project_id
-  default_service = google_compute_backend_service.backend.id
+  default_service = var.frontend_bucket_name != "" ? google_compute_backend_bucket.frontend[0].id : google_compute_backend_service.backend.id
+
+  # Route API requests to backend service
+  host_rule {
+    hosts        = ["*"]
+    path_matcher = "allpaths"
+  }
+
+  path_matcher {
+    name            = "allpaths"
+    default_service = var.frontend_bucket_name != "" ? google_compute_backend_bucket.frontend[0].id : google_compute_backend_service.backend.id
+
+    # API routes to backend service
+    path_rule {
+      paths   = ["/api/*", "/options/*", "/screener/*", "/health"]
+      service = google_compute_backend_service.backend.id
+    }
+
+    # All other routes to frontend bucket (if configured)
+    dynamic "path_rule" {
+      for_each = var.frontend_bucket_name != "" ? [1] : []
+      content {
+        paths   = ["/*"]
+        service = google_compute_backend_bucket.frontend[0].id
+      }
+    }
+  }
 }
 
 # HTTP to HTTPS redirect

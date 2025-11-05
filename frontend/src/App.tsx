@@ -6,10 +6,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { OptionsAnalyzer } from './components';
+import { OptionsAnalyzer, OptionsFilters } from './components';
 import { OptionChainResponse } from './types/options';
 import { FinancialMetrics } from './types/metrics';
+import { apiClient } from './config/api';
 import './App.css';
 
 /**
@@ -17,9 +17,10 @@ import './App.css';
  *
  * Main application entry point that:
  * 1. Fetches option chain data from the backend API
- * 2. Displays data using OptionsAnalyzer (Grid + Metrics)
- * 3. Handles loading and error states
- * 4. Tracks calculated metrics
+ * 2. Displays filter controls for expiration and ATM range
+ * 3. Displays data using OptionsAnalyzer (Grid + Metrics)
+ * 4. Handles loading and error states
+ * 5. Tracks calculated metrics
  */
 const App: React.FC = () => {
   const [optionData, setOptionData] = useState<OptionChainResponse | null>(null);
@@ -27,19 +28,40 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [ticker, setTicker] = useState<string>('AAPL');
   const [inputTicker, setInputTicker] = useState<string>('AAPL');
-  const [lastMetrics, setLastMetrics] = useState<FinancialMetrics | null>(null);
+
+  // Filter states
+  const [selectedExpiration, setSelectedExpiration] = useState<string | null>(null);
+  const [atmStrikeRange, setAtmStrikeRange] = useState<number | null>(null);
+
+  // const [lastMetrics, setLastMetrics] = useState<FinancialMetrics | null>(null); // Reserved for future use
 
   /**
    * Fetch option chain data from API
    */
-  const fetchOptionChain = async (symbol: string) => {
+  const fetchOptionChain = async (
+    symbol: string,
+    expiration?: string | null,
+    atmRange?: number | null
+  ) => {
     setLoading(true);
     setError(null);
 
     try {
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('limit', '250'); // Get more contracts for filtering
+
+      if (expiration) {
+        params.append('expiration_date', expiration);
+      }
+
+      if (atmRange) {
+        params.append('atm_strikes', atmRange.toString());
+      }
+
       // Call backend API endpoint
-      const response = await axios.get<OptionChainResponse>(
-        `/options/${symbol.toUpperCase()}?limit=50`
+      const response = await apiClient.get<OptionChainResponse>(
+        `/options/${symbol.toUpperCase()}?${params.toString()}`
       );
 
       setOptionData(response.data);
@@ -70,15 +92,38 @@ const App: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputTicker.trim()) {
+      setSelectedExpiration(null); // Reset filters on new ticker
+      setAtmStrikeRange(null);
       fetchOptionChain(inputTicker.trim());
     }
+  };
+
+  /**
+   * Handle expiration filter change (don't fetch yet)
+   */
+  const handleExpirationChange = (expiration: string | null) => {
+    setSelectedExpiration(expiration);
+  };
+
+  /**
+   * Handle ATM strike range filter change (don't fetch yet)
+   */
+  const handleAtmRangeChange = (range: number | null) => {
+    setAtmStrikeRange(range);
+  };
+
+  /**
+   * Handle "Apply Filters" button click
+   */
+  const handleApplyFilters = () => {
+    fetchOptionChain(ticker, selectedExpiration, atmStrikeRange);
   };
 
   /**
    * Handle metrics calculation
    */
   const handleMetricsCalculated = (metrics: FinancialMetrics) => {
-    setLastMetrics(metrics);
+    // setLastMetrics(metrics); // Reserved for future use
     console.log('Metrics calculated:', metrics);
   };
 
@@ -120,6 +165,20 @@ const App: React.FC = () => {
             </div>
           </form>
         </div>
+
+        {/* Filter Controls - Show when we have option data */}
+        {optionData && !loading && !error && (
+          <OptionsFilters
+            availableExpirations={optionData.available_expirations || []}
+            selectedExpiration={selectedExpiration}
+            onExpirationChange={handleExpirationChange}
+            atmStrikeRange={atmStrikeRange}
+            onAtmStrikeRangeChange={handleAtmRangeChange}
+            onApplyFilters={handleApplyFilters}
+            stockPrice={optionData.stock_price}
+            disabled={loading}
+          />
+        )}
 
         {/* Loading State */}
         {loading && (

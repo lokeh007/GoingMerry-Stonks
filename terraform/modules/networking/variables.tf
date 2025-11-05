@@ -62,3 +62,9 @@ variable "log_sample_rate" {
   type        = number
   default     = 1.0
 }
+
+variable "frontend_bucket_name" {
+  description = "Cloud Storage bucket name for frontend static files"
+  type        = string
+  default     = ""
+}

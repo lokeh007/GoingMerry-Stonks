@@ -59,11 +59,17 @@ async def get_option_chain(
         description="Filter by expiration date (YYYY-MM-DD format)",
         pattern=r"^\d{4}-\d{2}-\d{2}$",
     ),
+    atm_strikes: Optional[int] = Query(
+        None,
+        description="Number of strikes to show around ATM price (e.g., 5 = 5 above + 5 below)",
+        ge=1,
+        le=50,
+    ),
     limit: int = Query(
-        50,
+        250,
         description="Maximum number of contracts to return",
         ge=1,
-        le=250,
+        le=1000,
     ),
 ) -> OptionChainResponse:
     """
@@ -114,6 +120,7 @@ async def get_option_chain(
         chain_data = market_data_provider.get_option_chain(
             ticker=ticker.upper(),
             expiration_date=expiration_date,
+            atm_strikes=atm_strikes,
             limit=limit,
         )
 
@@ -167,6 +174,7 @@ async def get_option_chain(
             calls=calls,
             puts=puts,
             total_contracts=len(calls) + len(puts),
+            available_expirations=chain_data.get("available_expirations", []),
             timestamp=datetime.now(),
         )
 
