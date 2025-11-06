@@ -20,7 +20,7 @@ const OptionsPage: React.FC = () => {
 
   // Filter states
   const [selectedExpiration, setSelectedExpiration] = useState<string | null>(null);
-  const [atmStrikeRange, setAtmStrikeRange] = useState<number | null>(null);
+  const [atmStrikeRange, setAtmStrikeRange] = useState<number | null>(10);
 
   /**
    * Fetch option chain data from API
@@ -72,8 +72,8 @@ const OptionsPage: React.FC = () => {
     e.preventDefault();
     if (inputTicker.trim()) {
       setSelectedExpiration(null);
-      setAtmStrikeRange(null);
-      fetchOptionChain(inputTicker.trim());
+      setAtmStrikeRange(10);
+      fetchOptionChain(inputTicker.trim(), null, 10);
     }
   };
 
@@ -94,7 +94,7 @@ const OptionsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchOptionChain('AAPL');
+    fetchOptionChain('AAPL', null, 10);
   }, []);
 
   return (

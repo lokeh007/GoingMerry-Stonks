@@ -134,6 +134,56 @@
   color: var(--text-primary);
 }
 
+/* Chart Type Toggle */
+.ta-chart-type-section {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin-top: 20px;
+}
+
+.ta-chart-type-button {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ta-chart-type-button:first-child {
+  border-radius: 8px 0 0 8px;
+  border-right: none;
+}
+
+.ta-chart-type-button:last-child {
+  border-radius: 0 8px 8px 0;
+  border-left: none;
+}
+
+.ta-chart-type-button:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.ta-chart-type-button.active {
+  background: var(--accent-teal);
+  color: var(--text-primary);
+  border-color: var(--accent-teal);
+}
+
+.ta-chart-type-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Volume Chart */
+.volume-chart {
+  height: 200px;
+}
+
 /* Loading State */
 .ta-loading-container {
   display: flex;

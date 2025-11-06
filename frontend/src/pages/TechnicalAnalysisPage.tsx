@@ -8,6 +8,8 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '../config/api';
 import './TechnicalAnalysisPage.css';
 import { PriceChart } from '../components/TechnicalAnalysis/PriceChart';
+import { CandlestickChart } from '../components/TechnicalAnalysis/CandlestickChart';
+import { VolumeChart } from '../components/TechnicalAnalysis/VolumeChart';
 import { RSIChart } from '../components/TechnicalAnalysis/RSIChart';
 import { MACDChart } from '../components/TechnicalAnalysis/MACDChart';
 
@@ -36,8 +38,18 @@ interface TechnicalData {
     ema26?: number[];
     ema50?: number[];
     ema200?: number[];
+    sma20?: number[];
+    sma50?: number[];
+    sma200?: number[];
+    bollinger?: {
+      upper: number[];
+      middle: number[];
+      lower: number[];
+    };
   };
 }
+
+type ChartType = 'line' | 'candlestick';
 
 const TechnicalAnalysisPage: React.FC = () => {
   const [technicalData, setTechnicalData] = useState<TechnicalData | null>(null);
@@ -46,8 +58,9 @@ const TechnicalAnalysisPage: React.FC = () => {
   const [ticker, setTicker] = useState<string>('AAPL');
   const [inputTicker, setInputTicker] = useState<string>('AAPL');
   const [period, setPeriod] = useState<string>('6mo');
+  const [chartType, setChartType] = useState<ChartType>('line');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([
-    'rsi', 'macd', 'ema12', 'ema26', 'ema50'
+    'rsi', 'macd', 'ema12', 'ema26', 'ema50', 'ema200', 'sma20', 'sma50', 'sma200', 'bollinger'
   ]);
 
   /**
@@ -180,6 +193,14 @@ const TechnicalAnalysisPage: React.FC = () => {
             <label className="ta-indicator-toggle">
               <input
                 type="checkbox"
+                checked={selectedIndicators.includes('bollinger')}
+                onChange={() => handleIndicatorToggle('bollinger')}
+              />
+              <span>Bollinger Bands</span>
+            </label>
+            <label className="ta-indicator-toggle">
+              <input
+                type="checkbox"
                 checked={selectedIndicators.includes('ema12')}
                 onChange={() => handleIndicatorToggle('ema12')}
               />
@@ -201,6 +222,56 @@ const TechnicalAnalysisPage: React.FC = () => {
               />
               <span>EMA 50</span>
             </label>
+            <label className="ta-indicator-toggle">
+              <input
+                type="checkbox"
+                checked={selectedIndicators.includes('ema200')}
+                onChange={() => handleIndicatorToggle('ema200')}
+              />
+              <span>EMA 200</span>
+            </label>
+            <label className="ta-indicator-toggle">
+              <input
+                type="checkbox"
+                checked={selectedIndicators.includes('sma20')}
+                onChange={() => handleIndicatorToggle('sma20')}
+              />
+              <span>SMA 20</span>
+            </label>
+            <label className="ta-indicator-toggle">
+              <input
+                type="checkbox"
+                checked={selectedIndicators.includes('sma50')}
+                onChange={() => handleIndicatorToggle('sma50')}
+              />
+              <span>SMA 50</span>
+            </label>
+            <label className="ta-indicator-toggle">
+              <input
+                type="checkbox"
+                checked={selectedIndicators.includes('sma200')}
+                onChange={() => handleIndicatorToggle('sma200')}
+              />
+              <span>SMA 200</span>
+            </label>
+          </div>
+
+          {/* Chart Type Toggle */}
+          <div className="ta-chart-type-section">
+            <button
+              className={`ta-chart-type-button ${chartType === 'line' ? 'active' : ''}`}
+              onClick={() => setChartType('line')}
+              disabled={loading}
+            >
+              Line Chart
+            </button>
+            <button
+              className={`ta-chart-type-button ${chartType === 'candlestick' ? 'active' : ''}`}
+              onClick={() => setChartType('candlestick')}
+              disabled={loading}
+            >
+              Candlestick
+            </button>
           </div>
         </div>
 
@@ -227,13 +298,46 @@ const TechnicalAnalysisPage: React.FC = () => {
         {/* Charts */}
         {technicalData && !loading && !error && (
           <div className="ta-charts-container">
-            {/* Price Chart with EMAs */}
-            <PriceChart
+            {/* Price Chart (Line or Candlestick) */}
+            {chartType === 'line' ? (
+              <PriceChart
+                dates={technicalData.price_data.dates}
+                prices={technicalData.price_data.close}
+                ema12={technicalData.indicators.ema12}
+                ema26={technicalData.indicators.ema26}
+                ema50={technicalData.indicators.ema50}
+                ema200={technicalData.indicators.ema200}
+                sma20={technicalData.indicators.sma20}
+                sma50={technicalData.indicators.sma50}
+                sma200={technicalData.indicators.sma200}
+                bollingerBands={technicalData.indicators.bollinger}
+                ticker={technicalData.ticker}
+              />
+            ) : (
+              <CandlestickChart
+                dates={technicalData.price_data.dates}
+                open={technicalData.price_data.open}
+                high={technicalData.price_data.high}
+                low={technicalData.price_data.low}
+                close={technicalData.price_data.close}
+                ema12={technicalData.indicators.ema12}
+                ema26={technicalData.indicators.ema26}
+                ema50={technicalData.indicators.ema50}
+                ema200={technicalData.indicators.ema200}
+                sma20={technicalData.indicators.sma20}
+                sma50={technicalData.indicators.sma50}
+                sma200={technicalData.indicators.sma200}
+                bollingerBands={technicalData.indicators.bollinger}
+                ticker={technicalData.ticker}
+              />
+            )}
+
+            {/* Volume Chart */}
+            <VolumeChart
               dates={technicalData.price_data.dates}
-              prices={technicalData.price_data.close}
-              ema12={technicalData.indicators.ema12}
-              ema26={technicalData.indicators.ema26}
-              ema50={technicalData.indicators.ema50}
+              volume={technicalData.price_data.volume}
+              open={technicalData.price_data.open}
+              close={technicalData.price_data.close}
               ticker={technicalData.ticker}
             />
 
