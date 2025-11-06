@@ -165,6 +165,12 @@ const OptionsGrid: React.FC<OptionsGridProps> = ({
                           <span className="net-credit">
                             {formatCurrency(cellData.netCredit)}
                           </span>
+                          {cellData.call?.implied_volatility !== undefined &&
+                           cellData.call.implied_volatility !== null && (
+                            <span className="iv-display">
+                              IV: {(cellData.call.implied_volatility * 100).toFixed(1)}%
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="no-data-indicator">-</span>

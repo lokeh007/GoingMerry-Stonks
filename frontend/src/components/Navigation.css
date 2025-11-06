@@ -1,0 +1,47 @@
+/**
+ * Navigation Component Styles
+ */
+
+.main-navigation {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  justify-content: center;
+}
+
+.nav-link {
+  padding: 10px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.nav-link:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+}
+
+.nav-link.active {
+  color: var(--text-primary);
+  background: var(--accent-teal);
+  border-color: var(--accent-teal);
+  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.3);
+}
+
+@media (max-width: 768px) {
+  .main-navigation {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .nav-link {
+    text-align: center;
+  }
+}

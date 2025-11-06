@@ -836,6 +836,63 @@ class MarketDataProvider:
         logger.warning(f"Unknown universe type '{universe_type}', returning popular stocks")
         return universes["popular"]
 
+    def get_vix(self) -> Dict[str, Any]:
+        """
+        Get the current VIX (Volatility Index) value from Yahoo Finance.
+
+        The VIX measures the market's expectation of 30-day forward-looking volatility.
+        Values are returned as percentages.
+
+        Returns:
+            Dictionary containing VIX data:
+            - value: Current VIX value
+            - timestamp: When the data was retrieved
+
+        Raises:
+            MarketDataError: If unable to fetch VIX data
+
+        Example:
+            >>> provider = MarketDataProvider()
+            >>> vix_data = provider.get_vix()
+            >>> print(f"VIX: {vix_data['value']:.2f}")
+        """
+        try:
+            logger.info("Fetching VIX data from yfinance")
+
+            # Fetch VIX from Yahoo Finance (ticker: ^VIX)
+            vix = yf.Ticker("^VIX")
+
+            # Get the most recent price
+            vix_info = vix.info
+
+            # Try to get current price from various fields
+            current_price = None
+            if 'regularMarketPrice' in vix_info:
+                current_price = vix_info['regularMarketPrice']
+            elif 'previousClose' in vix_info:
+                current_price = vix_info['previousClose']
+
+            if current_price is None:
+                # Fallback: get from history
+                hist = vix.history(period="1d")
+                if not hist.empty:
+                    current_price = float(hist['Close'].iloc[-1])
+
+            if current_price is None:
+                raise MarketDataError("Unable to retrieve VIX value")
+
+            result = {
+                "value": float(current_price),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            logger.info(f"Successfully fetched VIX: {result['value']:.2f}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Error fetching VIX data: {str(e)}")
+            raise MarketDataError(f"Failed to fetch VIX data: {str(e)}")
+
     def health_check(self) -> bool:
         """
         Check if the API connection is healthy.

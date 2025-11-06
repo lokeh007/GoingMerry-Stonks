@@ -219,6 +219,13 @@
   font-weight: 700;
 }
 
+.iv-display {
+  color: #666;
+  font-size: 11px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
 .no-data-indicator {
   color: #bbb;
   font-size: 16px;

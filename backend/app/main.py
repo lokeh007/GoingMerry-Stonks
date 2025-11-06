@@ -9,7 +9,7 @@ from typing import Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import options, screener
+from .routers import options, screener, technical_analysis
 
 
 # Initialize FastAPI application
@@ -40,6 +40,7 @@ app.add_middleware(
 # Include routers with /api prefix for load balancer routing
 app.include_router(options.router, prefix="/api")
 app.include_router(screener.router, prefix="/api")
+app.include_router(technical_analysis.router, prefix="/api")
 
 
 @app.get("/", tags=["Health"])

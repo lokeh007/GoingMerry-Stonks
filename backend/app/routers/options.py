@@ -291,3 +291,55 @@ async def get_option_chain_summary(
     except Exception as e:
         logger.exception(f"Error generating summary for {ticker}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get(
+    "/market/vix",
+    summary="Get VIX (Volatility Index)",
+    description="Get the current VIX value from Yahoo Finance.",
+)
+async def get_vix():
+    """
+    Get the current VIX (Volatility Index) value.
+
+    The VIX measures the market's expectation of 30-day forward-looking volatility
+    derived from S&P 500 index options. Higher values indicate higher expected volatility.
+
+    **Interpretation:**
+    - VIX < 18: Low volatility (stable market conditions)
+    - VIX 18-20: Moderate volatility
+    - VIX > 20: High volatility (uncertain/volatile market conditions)
+
+    **Returns:**
+    - VIX value and timestamp
+
+    **Example Response:**
+    ```json
+    {
+        "value": 15.42,
+        "timestamp": "2025-11-05T10:30:00"
+    }
+    ```
+    """
+    try:
+        logger.info("Received VIX request")
+
+        # Fetch VIX data
+        vix_data = market_data_provider.get_vix()
+
+        logger.info(f"Successfully retrieved VIX: {vix_data['value']:.2f}")
+        return JSONResponse(content=vix_data)
+
+    except MarketDataError as e:
+        logger.error(f"Error fetching VIX: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving VIX data. {str(e)}",
+        )
+
+    except Exception as e:
+        logger.exception("Unexpected error retrieving VIX")
+        raise HTTPException(
+            status_code=500,
+            detail="An unexpected error occurred. Please try again later.",
+        )
