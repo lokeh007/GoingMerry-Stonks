@@ -10,8 +10,8 @@ GoingMerry-Stonks is a **production-deployed** full-stack financial analysis pla
 **Environment**: Production (sylvan-earth-477020-u6)
 **Region**: us-east5
 **Live URLs**:
+- **Frontend (PRIMARY)**: https://goingmerry-stonks.web.app (Firebase Hosting)
 - Backend API: https://prod-backend-api-rlfl2vcoda-ul.a.run.app/api/docs
-- Frontend: Pending DNS configuration for https://api.goingmerry-stonks.com
 
 ---
 
@@ -20,12 +20,19 @@ GoingMerry-Stonks is a **production-deployed** full-stack financial analysis pla
 ### Current Deployment (November 2025)
 
 ```
-Internet → Global Load Balancer (34.8.254.23)
-    ├─ Frontend: Cloud Storage + CDN (React SPA)
-    │  └─ Routes: /* → gs://sylvan-earth-477020-u6-frontend
+Internet
+    ├─ Frontend: Firebase Hosting (PRIMARY)
+    │  └─ URL: https://goingmerry-stonks.web.app
+    │  └─ Serves: React SPA (build/)
+    │  └─ CDN: Global (Firebase CDN)
+    │
+    ├─ Frontend (BACKUP): Cloud Storage + CDN
+    │  └─ Bucket: gs://sylvan-earth-477020-u6-frontend
+    │  └─ Note: Alternative deployment option
     │
     └─ Backend: Cloud Run (FastAPI)
-       ├─ Routes: /api/*, /options/*, /screener/*, /health
+       ├─ URL: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
+       ├─ Routes: /api/*, /options/*, /screener/*, /technical/*, /health
        ├─ Database: Cloud SQL PostgreSQL 15 (HA enabled)
        ├─ Secrets: Secret Manager (Polygon API key, DB credentials)
        └─ Security: Cloud Armor (rate limiting, geo-blocking)
@@ -35,11 +42,10 @@ Internet → Global Load Balancer (34.8.254.23)
 
 | Component | Resource Name | Status |
 |-----------|---------------|--------|
+| **Frontend (PRIMARY)** | goingmerry-stonks (Firebase) | ✅ Active |
 | **Backend Service** | prod-backend-api | ✅ Running (Cloud Run) |
 | **Database** | prod-postgres-d05b2fe9 | ✅ RUNNABLE (PostgreSQL 15) |
-| **Frontend Bucket** | sylvan-earth-477020-u6-frontend | ✅ Active |
-| **Load Balancer** | prod-backend-url-map | ✅ Active |
-| **SSL Certificate** | prod-backend-ssl-cert | ⏳ PROVISIONING |
+| **Frontend (Backup)** | sylvan-earth-477020-u6-frontend | ✅ Active (Cloud Storage) |
 | **VPC Connector** | prod-vpc-connector | ✅ Active |
 | **Artifact Registry** | prod-backend | ✅ Active |
 
@@ -47,8 +53,11 @@ Internet → Global Load Balancer (34.8.254.23)
 
 - **Infrastructure**: Terraform (all resources defined in `terraform/`)
 - **Backend**: Docker → Cloud Run (serverless containers)
-- **Frontend**: npm build → Cloud Storage (static hosting with CDN)
+- **Frontend (PRIMARY)**: npm build → Firebase Hosting (`firebase deploy --only hosting`)
+- **Frontend (Backup)**: npm build → Cloud Storage (`gsutil rsync`)
 - **CI/CD**: GitHub Actions + Cloud Build
+
+**IMPORTANT**: Always deploy frontend to Firebase Hosting for production updates!
 
 ---
 
@@ -229,7 +238,9 @@ terraform output
 4. Push to Artifact Registry (us-east5-docker.pkg.dev)
 5. Deploy to Cloud Run
 6. Build frontend (npm run build)
-7. Deploy to Cloud Storage
+7. Deploy to Firebase Hosting
+
+**Note**: CI/CD pipeline should be updated to use `firebase deploy --only hosting` instead of Cloud Storage
 
 **Cloud Build** (`cloudbuild.yaml`):
 - Triggered on git push to main
@@ -257,20 +268,26 @@ gcloud run services update prod-backend-api \
   --image=us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0 \
   --region=us-east5
 
-# Frontend deployment (Cloud Storage method)
+# Frontend deployment (PRIMARY METHOD - Firebase Hosting)
+cd frontend
+npm run build
+firebase deploy --only hosting
+
+# Frontend deployment (BACKUP METHOD - Cloud Storage)
 cd frontend
 npm run build
 gsutil -m rsync -r -d build gs://sylvan-earth-477020-u6-frontend
-
-# Frontend deployment (Firebase Hosting method - alternative)
-cd frontend
-npm run build
-firebase deploy --only hosting --project goingmerry-stonks
 ```
 
-**Note**: Two frontend hosting options are available:
-1. **Cloud Storage + Load Balancer** (currently active) - Better GCP integration
-2. **Firebase Hosting** (alternative) - Simpler deployment, Firebase features
+**IMPORTANT - Frontend Deployment**:
+- **PRIMARY**: Use Firebase Hosting (`firebase deploy --only hosting`)
+  - Production URL: https://goingmerry-stonks.web.app
+  - Instant deployment with global CDN
+  - This is the URL users access!
+
+- **BACKUP**: Cloud Storage is available but NOT the primary deployment target
+  - Only use for testing or backup purposes
+  - Not connected to the main domain
 
 ---
 
@@ -448,22 +465,22 @@ terraform output
 
 ### Deploying Frontend Updates
 
-**Option 1: Cloud Storage (current method)**
+**PRIMARY METHOD - Firebase Hosting** ⭐
+```bash
+cd frontend
+npm run build
+firebase deploy --only hosting
+```
+This deploys to: https://goingmerry-stonks.web.app
+
+**BACKUP METHOD - Cloud Storage** (use only for testing)
 ```bash
 cd frontend
 npm run build
 gsutil -m rsync -r -d build gs://sylvan-earth-477020-u6-frontend
-
-# Invalidate CDN cache (if needed)
-gcloud compute url-maps invalidate-cdn-cache prod-backend-url-map --path="/*"
 ```
 
-**Option 2: Firebase Hosting (alternative)**
-```bash
-cd frontend
-npm run build
-firebase deploy --only hosting --project goingmerry-stonks
-```
+**⚠️ IMPORTANT**: Always use Firebase Hosting for production deployments!
 
 ### Working with Secrets
 
@@ -692,11 +709,11 @@ cd frontend && npm run build
 # Deploy backend
 gcloud run deploy prod-backend-api --image=IMAGE_URL --region=us-east5
 
-# Deploy frontend (Cloud Storage)
-gsutil -m rsync -r -d frontend/build gs://sylvan-earth-477020-u6-frontend
+# Deploy frontend (PRIMARY - Firebase Hosting)
+cd frontend && npm run build && firebase deploy --only hosting
 
-# Deploy frontend (Firebase)
-firebase deploy --only hosting --project goingmerry-stonks
+# Deploy frontend (BACKUP - Cloud Storage)
+cd frontend && npm run build && gsutil -m rsync -r -d build gs://sylvan-earth-477020-u6-frontend
 
 # View logs
 gcloud run services logs tail prod-backend-api --region=us-east5
@@ -707,6 +724,8 @@ cd terraform/environments/prod && terraform plan && terraform apply
 
 ---
 
-**Last Updated**: November 3, 2025
-**Production Status**: ✅ Deployed and operational (pending DNS configuration)
+**Last Updated**: November 6, 2025
+**Production Status**: ✅ Deployed and operational
+**Frontend URL**: https://goingmerry-stonks.web.app (Firebase Hosting)
+**Backend URL**: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
 **Test Coverage**: 54% (46/46 tests passing)

@@ -27,8 +27,20 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 - **Interactive options grid** (strikes × expirations)
 - **Black-Scholes-Merton pricing** and Greeks (Delta, Theta, Gamma, Vega, Rho)
 - **Multiple strategies**: Long/Short Calls and Puts, Spreads
+- **Smart defaults**: Shows 10 strikes around current price for focused analysis
 
-### 📈 Profit/Loss Visualization
+### 📈 Technical Analysis (NEW!)
+- **Interactive price charts** with line and candlestick views
+- **Volume bars** with color-coded up/down days
+- **10 Technical indicators** with toggle controls:
+  - **Moving Averages**: EMA 12/26/50/200, SMA 20/50/200
+  - **Momentum**: RSI (Relative Strength Index)
+  - **Trend**: MACD (Moving Average Convergence Divergence)
+  - **Volatility**: Bollinger Bands (upper/middle/lower)
+- **Multi-timeframe analysis**: 1M to 5Y historical data
+- **Professional charting** with Chart.js visualizations
+
+### 📉 Profit/Loss Visualization
 - **Interactive P/L charts** showing "hockey stick" diagrams
 - **Automatic breakeven detection**
 - **Risk/reward analysis** with ROC calculations
@@ -61,50 +73,47 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
                                │
                                ↓
                     ┌──────────────────────┐
-                    │  Global Load Balancer │
-                    │   IP: 34.8.254.23     │
-                    │  Cloud Armor Enabled  │
-                    │  SSL/TLS (HTTPS)      │
+                    │  Firebase Hosting    │
+                    │  goingmerry-stonks   │
+                    │  .web.app            │
+                    │  Global CDN          │
                     └───────────┬───────────┘
                                 │
-                    ┌───────────┴────────────┐
-                    │                        │
-                    ↓                        ↓
-        ┌───────────────────┐    ┌──────────────────────┐
-        │  Frontend (CDN)   │    │  Backend API         │
-        │  Cloud Storage    │    │  Cloud Run           │
-        │  React SPA        │    │  FastAPI             │
-        │  /* routes        │    │  /api/*, /options/*  │
-        └───────────────────┘    │  /screener/*, /health│
-                                 └──────────┬───────────┘
-                                            │
-                            ┌───────────────┼───────────────┐
-                            │               │               │
-                            ↓               ↓               ↓
-                    ┌──────────────┐ ┌────────────┐ ┌──────────┐
-                    │   Cloud SQL   │ │  Secrets   │ │ Polygon  │
-                    │  PostgreSQL   │ │  Manager   │ │   API    │
-                    │  HA Enabled   │ │  API Keys  │ │  Market  │
-                    └──────────────┘ └────────────┘ └──────────┘
+                                ↓
+                    ┌──────────────────────┐
+                    │  Backend API         │
+                    │  Cloud Run           │
+                    │  FastAPI             │
+                    │  /api/*, /options/*  │
+                    │  /technical/*        │
+                    │  /screener/*, /health│
+                    └──────────┬───────────┘
+                               │
+                ┌──────────────┼──────────────┐
+                │              │              │
+                ↓              ↓              ↓
+        ┌──────────────┐ ┌────────────┐ ┌──────────┐
+        │   Cloud SQL   │ │  Secrets   │ │ Polygon  │
+        │  PostgreSQL   │ │  Manager   │ │   API    │
+        │  HA Enabled   │ │  API Keys  │ │  Market  │
+        └──────────────┘ └────────────┘ └──────────┘
 ```
 
 ### Infrastructure Components
 
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
-| **Frontend** | React 18 + TypeScript | SPA with options analysis UI |
-| **Static Hosting** | Cloud Storage + CDN | Frontend static assets with global caching |
+| **Frontend** | React 18 + TypeScript | SPA with options & technical analysis UI |
+| **Static Hosting** | Firebase Hosting | Frontend static assets with global CDN |
 | **Backend API** | FastAPI + Python 3.11 | RESTful API for market data |
 | **Application Runtime** | Cloud Run | Serverless container deployment |
 | **Database** | Cloud SQL PostgreSQL 15 | Persistent data storage (HA enabled) |
-| **Load Balancer** | Global HTTP(S) LB | Traffic routing, SSL termination |
-| **CDN** | Cloud CDN | Static asset caching (1-hour TTL) |
 | **Security** | Cloud Armor | DDoS protection, rate limiting, geo-blocking |
 | **Secrets** | Secret Manager | API keys and credentials |
 | **Monitoring** | Cloud Monitoring | Alerts for errors, latency, database |
 | **Logging** | Cloud Logging | Centralized log aggregation |
 | **IaC** | Terraform | Infrastructure as Code |
-| **CI/CD** | GitHub Actions + Cloud Build | Automated testing and deployment |
+| **CI/CD** | GitHub Actions + Firebase Deploy | Automated testing and deployment |
 
 ---
 
@@ -755,11 +764,32 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 | Test Coverage | 54% ✅ |
 | Production Status | **LIVE** ✅ |
 | Frontend URL | https://goingmerry-stonks.web.app ✅ |
-| Frontend Build | 135 KB gzipped ✅ |
+| Frontend Build | 146 KB gzipped ✅ |
 | API Latency (P95) | <500ms ✅ |
 | Database HA | Enabled ✅ |
 | SSL Certificate | Active (Google-managed) ✅ |
 | Global CDN | Active (Firebase) ✅ |
 
-Last Updated: November 3, 2025
+### 🆕 Recent Updates (November 6, 2025)
+
+**Technical Analysis Platform Complete! 📊**
+- ✅ Added **Volume Bars** with color-coded up/down days
+- ✅ Added **Candlestick Charts** with toggle between line/candlestick views
+- ✅ Implemented **10 Technical Indicators**:
+  - Bollinger Bands (upper, middle, lower)
+  - SMA 20, 50, 200
+  - EMA 12, 26, 50, 200
+  - RSI (Relative Strength Index)
+  - MACD (Moving Average Convergence Divergence)
+- ✅ Added **indicator toggle controls** - check/uncheck any combination
+- ✅ **Options page improvements**: Default shows 10 strikes (focused analysis)
+- ✅ **Multi-timeframe support**: 1M, 3M, 6M, 1Y, 2Y, 5Y historical data
+- ✅ **Chart type toggle**: Switch between line and candlestick views
+- ✅ **Professional UI**: Dark theme with color-coded indicators
+
+**Next Up**: Technical Screener, Multiple Timeframe Toggle, Chart Drawing Tools
+
+---
+
+Last Updated: November 6, 2025
 **Status**: Production-ready and serving users worldwide 🌐
