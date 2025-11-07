@@ -11,8 +11,8 @@ from typing import Dict, Optional, Any, List
 from datetime import datetime
 import logging
 
-import requests
-from requests.exceptions import RequestException, Timeout, HTTPError
+import requests  # type: ignore[import-untyped]
+from requests.exceptions import RequestException, Timeout, HTTPError  # type: ignore[import-untyped]
 import yfinance as yf
 
 

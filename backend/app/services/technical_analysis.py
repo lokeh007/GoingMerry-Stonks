@@ -260,7 +260,7 @@ class TechnicalAnalysisProvider:
             close_prices = hist["Close"]
 
             # Calculate requested indicators
-            result = {
+            result: Dict[str, Any] = {
                 "ticker": ticker.upper(),
                 "period": period,
                 "interval": interval,
