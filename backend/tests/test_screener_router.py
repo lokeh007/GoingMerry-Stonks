@@ -12,7 +12,7 @@ from unittest.mock import patch
 @pytest.mark.unit
 def test_list_screeners(test_client: TestClient):
     """Test listing available screeners."""
-    response = test_client.get("/screener/screeners")
+    response = test_client.get("/api/screener/screeners")
 
     assert response.status_code == 200
     data = response.json()
@@ -24,7 +24,7 @@ def test_list_screeners(test_client: TestClient):
     screeners = data["screeners"]
     lynch_screener = next((s for s in screeners if "Lynch" in s["name"]), None)
     assert lynch_screener is not None
-    assert lynch_screener["endpoint"] == "/screener/lynch-fast-growers"
+    assert lynch_screener["endpoint"] == "/api/screener/lynch-fast-growers"
 
 
 @pytest.mark.unit
@@ -46,7 +46,7 @@ def test_lynch_fast_growers_default_params(test_client: TestClient, sample_stock
             "sector": "Technology"
         }
 
-        response = test_client.get("/screener/lynch-fast-growers")
+        response = test_client.get("/api/screener/lynch-fast-growers")
 
         assert response.status_code == 200
         data = response.json()
@@ -68,7 +68,7 @@ def test_lynch_fast_growers_custom_params(test_client: TestClient, sample_stock_
         mock_details.return_value = {"name": "NVIDIA Corporation", "sector": "Technology"}
 
         response = test_client.get(
-            "/screener/lynch-fast-growers?"
+            "/api/screener/lynch-fast-growers?"
             "min_earnings_growth=20&"
             "max_peg_ratio=1.5&"
             "max_debt_to_equity=0.5&"
@@ -116,7 +116,7 @@ def test_lynch_fast_growers_filtering(test_client: TestClient):
         mock_financials.side_effect = get_financials
         mock_details.return_value = {"name": "Company", "sector": "Tech"}
 
-        response = test_client.get("/screener/lynch-fast-growers")
+        response = test_client.get("/api/screener/lynch-fast-growers")
 
         assert response.status_code == 200
         data = response.json()
@@ -192,11 +192,11 @@ def test_screening_reasons_generation():
 def test_screener_validation_errors(test_client: TestClient):
     """Test screener parameter validation."""
     # Negative growth rate (invalid)
-    response = test_client.get("/screener/lynch-fast-growers?min_earnings_growth=-10")
+    response = test_client.get("/api/screener/lynch-fast-growers?min_earnings_growth=-10")
     assert response.status_code == 422
 
     # Limit too high
-    response = test_client.get("/screener/lynch-fast-growers?limit=1000")
+    response = test_client.get("/api/screener/lynch-fast-growers?limit=1000")
     assert response.status_code == 422
 
 
@@ -212,7 +212,7 @@ def test_screener_handles_api_failures(test_client: TestClient):
         from app.services.market_data import MarketDataError
         mock_financials.side_effect = MarketDataError("API Error")
 
-        response = test_client.get("/screener/lynch-fast-growers")
+        response = test_client.get("/api/screener/lynch-fast-growers")
 
         # Should still return 200 with empty or partial results
         assert response.status_code == 200
@@ -226,7 +226,7 @@ def test_screener_no_sql_injection(test_client: TestClient):
     # Attempt SQL injection in parameters
     malicious_input = "'; DROP TABLE stocks; --"
 
-    response = test_client.get(f"/screener/lynch-fast-growers?universe={malicious_input}")
+    response = test_client.get(f"/api/screener/lynch-fast-growers?universe={malicious_input}")
 
     # Should handle safely (validation error or safe processing)
     assert response.status_code in [200, 422]
