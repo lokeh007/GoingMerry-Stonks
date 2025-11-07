@@ -632,9 +632,8 @@ class MarketDataProvider:
         try:
             logger.info(f"Fetching financials for: {ticker}")
 
-            response = requests.get(  # type: ignore
-                endpoint, params=params, timeout=self.timeout
-            )
+            # MyPy is strict about dict type for params, suppress this check
+            response = requests.get(endpoint, params=params, timeout=self.timeout)  # type: ignore
 
             if response.status_code == 404:
                 raise InvalidTickerError(f"Financials not found for ticker '{ticker}'")
