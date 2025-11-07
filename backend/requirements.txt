@@ -5,7 +5,7 @@ pydantic==2.9.2
 python-dotenv==1.0.1
 
 # HTTP & API
-requests==2.32.3
+requests==2.32.4
 
 # Market Data
 yfinance==0.2.66
