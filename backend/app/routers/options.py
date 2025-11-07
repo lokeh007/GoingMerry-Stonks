@@ -176,6 +176,7 @@ async def get_option_chain(
             total_contracts=len(calls) + len(puts),
             available_expirations=chain_data.get("available_expirations", []),
             timestamp=datetime.now(),
+            note=None,
         )
 
         logger.info(
