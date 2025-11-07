@@ -302,7 +302,7 @@ async def list_screeners():
     screeners = [
         {
             "name": "Lynch Fast Growers",
-            "endpoint": "/screener/lynch-fast-growers",
+            "endpoint": "/api/screener/lynch-fast-growers",
             "description": "Peter Lynch's strategy for finding fast-growing companies",
             "criteria": [
                 "Earnings growth: 10-25% annually",
@@ -316,19 +316,19 @@ async def list_screeners():
         },
         {
             "name": "Value Screener",
-            "endpoint": "/screener/value",
+            "endpoint": "/api/screener/value",
             "description": "Coming soon - Benjamin Graham value investing strategy",
             "status": "planned",
         },
         {
             "name": "Dividend Aristocrats",
-            "endpoint": "/screener/dividend-aristocrats",
+            "endpoint": "/api/screener/dividend-aristocrats",
             "description": "Coming soon - High-quality dividend stocks",
             "status": "planned",
         },
         {
             "name": "Momentum Screener",
-            "endpoint": "/screener/momentum",
+            "endpoint": "/api/screener/momentum",
             "description": "Coming soon - Stocks with strong price momentum",
             "status": "planned",
         },
