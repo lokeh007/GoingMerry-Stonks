@@ -142,7 +142,7 @@ export const RSIChart: React.FC<RSIChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
           maxRotation: 45,
           minRotation: 45,
         },
@@ -154,7 +154,7 @@ export const RSIChart: React.FC<RSIChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
         },
       },
     },

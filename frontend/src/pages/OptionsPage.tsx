@@ -15,8 +15,11 @@ const OptionsPage: React.FC = () => {
   const [optionData, setOptionData] = useState<OptionChainResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [ticker, setTicker] = useState<string>('AAPL');
-  const [inputTicker, setInputTicker] = useState<string>('AAPL');
+  const [ticker, setTicker] = useState<string>('PLTR');
+  const [inputTicker, setInputTicker] = useState<string>('PLTR');
+
+  // Favorite tickers for quick access
+  const favoriteTickers = ['TEM', 'GLXY', 'SOFI', 'SOXL', 'BMNR'];
 
   // Filter states
   const [selectedExpiration, setSelectedExpiration] = useState<string | null>(null);
@@ -93,8 +96,18 @@ const OptionsPage: React.FC = () => {
     console.log('Metrics calculated:', metrics);
   };
 
+  /**
+   * Handle clicking a favorite ticker button
+   */
+  const handleFavoriteTicker = (symbol: string) => {
+    setInputTicker(symbol);
+    setSelectedExpiration(null);
+    setAtmStrikeRange(10);
+    fetchOptionChain(symbol, null, 10);
+  };
+
   useEffect(() => {
-    fetchOptionChain('AAPL', null, 10);
+    fetchOptionChain('PLTR', null, 10);
   }, []);
 
   return (
@@ -122,6 +135,23 @@ const OptionsPage: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* Favorite Tickers */}
+          <div className="favorites-section">
+            <span className="favorites-label">Favorites:</span>
+            <div className="favorites-buttons">
+              {favoriteTickers.map((symbol) => (
+                <button
+                  key={symbol}
+                  onClick={() => handleFavoriteTicker(symbol)}
+                  className="favorite-ticker-button"
+                  disabled={loading}
+                >
+                  {symbol}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Filter Controls */}

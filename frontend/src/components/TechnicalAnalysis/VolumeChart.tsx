@@ -112,7 +112,7 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
           maxRotation: 45,
           minRotation: 45,
         },
@@ -122,7 +122,7 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
           callback: function(value: any) {
             // Format Y-axis labels (e.g., 50000000 → 50M)
             if (value >= 1000000000) {

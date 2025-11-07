@@ -298,7 +298,7 @@ export const CandlestickChart: React.FC<CandlestickChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
           maxRotation: 45,
           minRotation: 45,
         },
@@ -310,7 +310,7 @@ export const CandlestickChart: React.FC<CandlestickChartProps> = ({
           color: 'rgba(51, 65, 85, 0.3)',
         },
         ticks: {
-          color: '#94a3b8',
+          color: '#ffffff',
           callback: function(value: any) {
             return '$' + value.toFixed(2);
           },
