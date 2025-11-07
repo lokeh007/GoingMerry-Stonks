@@ -38,17 +38,21 @@ def mock_polygon_api():
         Mock: Configured mock for Polygon API
     """
     with patch('app.services.market_data.requests.get') as mock_get:
-        # Configure default successful response
+        # Configure default successful response for aggregate endpoint
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "status": "OK",
-            "ticker": {
-                "lastQuote": {"p": 150.00},
-                "lastTrade": {"p": 150.25},
-                "day": {"v": 1000000, "h": 152.00, "l": 148.00, "o": 149.00},
-                "prevDay": {"c": 149.50}
-            }
+            "results": [
+                {
+                    "c": 150.25,  # close price
+                    "o": 149.00,  # open price
+                    "h": 152.00,  # high price
+                    "l": 148.00,  # low price
+                    "v": 1000000,  # volume
+                    "t": 1700000000000,  # timestamp
+                }
+            ]
         }
         mock_get.return_value = mock_response
         yield mock_get

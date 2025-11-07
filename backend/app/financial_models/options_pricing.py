@@ -19,11 +19,13 @@ OptionType = Literal["call", "put"]
 
 class OptionsPricingError(Exception):
     """Base exception for options pricing calculations."""
+
     pass
 
 
 class InvalidParameterError(OptionsPricingError):
     """Raised when invalid parameters are provided."""
+
     pass
 
 
@@ -79,9 +81,9 @@ def _calculate_d1(S: float, K: float, T: float, r: float, sigma: float) -> float
     """
     if T == 0:
         # At expiration, use intrinsic value logic
-        return float('inf') if S > K else float('-inf')
+        return float("inf") if S > K else float("-inf")
 
-    return (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+    return (math.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * math.sqrt(T))
 
 
 def _calculate_d2(d1: float, sigma: float, T: float) -> float:

@@ -6,7 +6,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { FinancialMetrics, MetricsDisplayFormat } from '../types/metrics';
+import { MetricsDisplayFormat } from '../types/metrics';
 import '../styles/MetricsDisplay.css';
 
 /**

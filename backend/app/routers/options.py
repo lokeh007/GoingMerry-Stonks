@@ -176,6 +176,7 @@ async def get_option_chain(
             total_contracts=len(calls) + len(puts),
             available_expirations=chain_data.get("available_expirations", []),
             timestamp=datetime.now(),
+            note=None,
         )
 
         logger.info(
@@ -192,7 +193,7 @@ async def get_option_chain(
             detail=f"Ticker '{ticker}' not found or has no listed options. {str(e)}",
         )
 
-    except RateLimitError as e:
+    except RateLimitError:
         logger.error(f"Rate limit exceeded for ticker: {ticker}")
         raise HTTPException(
             status_code=429,
@@ -213,7 +214,7 @@ async def get_option_chain(
             detail=f"Error retrieving market data. {str(e)}",
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error retrieving option chain for {ticker}")
         raise HTTPException(
             status_code=500,
@@ -268,12 +269,11 @@ async def get_option_chain_summary(
                 c.get("volume", 0) for c in calls + puts if c.get("volume")
             ),
             "total_open_interest": sum(
-                c.get("open_interest", 0) for c in calls + puts
+                c.get("open_interest", 0)
+                for c in calls + puts
                 if c.get("open_interest")
             ),
-            "call_put_ratio": (
-                len(calls) / len(puts) if len(puts) > 0 else None
-            ),
+            "call_put_ratio": (len(calls) / len(puts) if len(puts) > 0 else None),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -288,7 +288,7 @@ async def get_option_chain_summary(
         raise HTTPException(status_code=503, detail=str(e))
     except MarketDataError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
+    except Exception:
         logger.exception(f"Error generating summary for {ticker}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -337,7 +337,7 @@ async def get_vix():
             detail=f"Error retrieving VIX data. {str(e)}",
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error retrieving VIX")
         raise HTTPException(
             status_code=500,

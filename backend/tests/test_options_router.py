@@ -28,7 +28,7 @@ def test_get_option_chain_success(test_client: TestClient, mock_polygon_api, sam
     with patch('app.services.market_data.MarketDataProvider.get_option_chain') as mock_chain:
         mock_chain.return_value = sample_option_chain
 
-        response = test_client.get("/options/AAPL")
+        response = test_client.get("/api/options/AAPL")
 
         assert response.status_code == 200
         data = response.json()
@@ -44,7 +44,7 @@ def test_get_option_chain_with_expiration_filter(test_client: TestClient, sample
     with patch('app.services.market_data.MarketDataProvider.get_option_chain') as mock_chain:
         mock_chain.return_value = sample_option_chain
 
-        response = test_client.get("/options/AAPL?expiration_date=2025-01-17")
+        response = test_client.get("/api/options/AAPL?expiration_date=2025-01-17")
 
         assert response.status_code == 200
         data = response.json()
@@ -57,7 +57,7 @@ def test_get_option_chain_with_limit(test_client: TestClient, sample_option_chai
     with patch('app.services.market_data.MarketDataProvider.get_option_chain') as mock_chain:
         mock_chain.return_value = sample_option_chain
 
-        response = test_client.get("/options/AAPL?limit=10")
+        response = test_client.get("/api/options/AAPL?limit=10")
 
         assert response.status_code == 200
         data = response.json()
@@ -71,7 +71,7 @@ def test_get_option_chain_invalid_ticker(test_client: TestClient):
         from app.services.market_data import InvalidTickerError
         mock_chain.side_effect = InvalidTickerError("Ticker not found")
 
-        response = test_client.get("/options/INVALID")
+        response = test_client.get("/api/options/INVALID")
 
         assert response.status_code == 404
         assert "not found" in response.json()["detail"].lower()
@@ -84,7 +84,7 @@ def test_get_option_chain_rate_limit(test_client: TestClient):
         from app.services.market_data import RateLimitError
         mock_chain.side_effect = RateLimitError("Rate limit exceeded")
 
-        response = test_client.get("/options/AAPL")
+        response = test_client.get("/api/options/AAPL")
 
         assert response.status_code == 429
 
@@ -96,7 +96,7 @@ def test_get_option_chain_api_error(test_client: TestClient):
         from app.services.market_data import APIConnectionError
         mock_chain.side_effect = APIConnectionError("Connection failed")
 
-        response = test_client.get("/options/AAPL")
+        response = test_client.get("/api/options/AAPL")
 
         assert response.status_code == 503
 
@@ -107,7 +107,7 @@ def test_get_option_chain_summary(test_client: TestClient, sample_option_chain):
     with patch('app.services.market_data.MarketDataProvider.get_option_chain') as mock_chain:
         mock_chain.return_value = sample_option_chain
 
-        response = test_client.get("/options/AAPL/summary")
+        response = test_client.get("/api/options/AAPL/summary")
 
         assert response.status_code == 200
         data = response.json()
@@ -158,7 +158,7 @@ def test_option_chain_real_api_call(test_client: TestClient):
     if os.getenv("POLYGON_API_KEY") == "test_api_key_12345":
         pytest.skip("Skipping real API test in test environment")
 
-    response = test_client.get("/options/AAPL?limit=5")
+    response = test_client.get("/api/options/AAPL?limit=5")
 
     # Should succeed or fail gracefully
     assert response.status_code in [200, 404, 429, 503]

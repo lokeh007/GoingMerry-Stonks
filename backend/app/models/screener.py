@@ -28,10 +28,13 @@ class StockScreenerResult(BaseModel):
         score: Screening score (0-100)
         reasons: List of reasons why stock passed screening
     """
+
     ticker: str = Field(..., description="Stock ticker symbol")
     company_name: str = Field(..., description="Company name")
     sector: Optional[str] = Field(None, description="Industry sector")
-    market_cap: Optional[float] = Field(None, description="Market cap in billions", ge=0)
+    market_cap: Optional[float] = Field(
+        None, description="Market cap in billions", ge=0
+    )
 
     # Pricing
     price: Optional[float] = Field(None, description="Current stock price", ge=0)
@@ -42,21 +45,25 @@ class StockScreenerResult(BaseModel):
 
     # Growth metrics
     revenue_growth: Optional[float] = Field(None, description="Revenue growth rate (%)")
-    earnings_growth: Optional[float] = Field(None, description="Earnings growth rate (%)")
+    earnings_growth: Optional[float] = Field(
+        None, description="Earnings growth rate (%)"
+    )
 
     # Financial health metrics
-    debt_to_equity: Optional[float] = Field(None, description="Debt-to-Equity ratio", ge=0)
+    debt_to_equity: Optional[float] = Field(
+        None, description="Debt-to-Equity ratio", ge=0
+    )
     current_ratio: Optional[float] = Field(None, description="Current ratio", ge=0)
 
     # Screening results
     score: float = Field(..., description="Screening score (0-100)", ge=0, le=100)
     reasons: List[str] = Field(
-        default_factory=list,
-        description="Reasons why stock passed screening"
+        default_factory=list, description="Reasons why stock passed screening"
     )
 
     class Config:
         """Pydantic model configuration."""
+
         json_schema_extra = {
             "example": {
                 "ticker": "AAPL",
@@ -74,8 +81,8 @@ class StockScreenerResult(BaseModel):
                 "reasons": [
                     "Revenue growth > 10%",
                     "PEG ratio < 2.5",
-                    "Strong financial health"
-                ]
+                    "Strong financial health",
+                ],
             }
         }
 
@@ -92,33 +99,30 @@ class ScreenerResponse(BaseModel):
         timestamp: Timestamp when screening was performed
         criteria: Screening criteria used
     """
+
     screener_name: str = Field(..., description="Screener strategy name")
     description: str = Field(..., description="Screener description")
     total_results: int = Field(..., description="Total number of results", ge=0)
     results: List[StockScreenerResult] = Field(
-        default_factory=list,
-        description="List of stocks that passed screening"
+        default_factory=list, description="List of stocks that passed screening"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.now,
-        description="Timestamp of screening"
+        default_factory=datetime.now, description="Timestamp of screening"
     )
-    criteria: Optional[dict] = Field(
-        None,
-        description="Screening criteria parameters"
-    )
+    criteria: Optional[dict] = Field(None, description="Screening criteria parameters")
 
-    @field_validator('total_results', mode='before')
+    @field_validator("total_results", mode="before")
     @classmethod
     def calculate_total(cls, v, info):
         """Calculate total results if not provided."""
         if v is None or v == 0:
-            results = info.data.get('results', [])
+            results = info.data.get("results", [])
             return len(results)
         return v
 
     class Config:
         """Pydantic model configuration."""
+
         json_schema_extra = {
             "example": {
                 "screener_name": "Lynch Fast Growers",
@@ -138,18 +142,15 @@ class ScreenerResponse(BaseModel):
                         "debt_to_equity": 1.73,
                         "current_ratio": 1.05,
                         "score": 85.5,
-                        "reasons": [
-                            "Revenue growth > 10%",
-                            "PEG ratio < 2.5"
-                        ]
+                        "reasons": ["Revenue growth > 10%", "PEG ratio < 2.5"],
                     }
                 ],
                 "timestamp": "2025-01-17T10:30:00",
                 "criteria": {
                     "min_earnings_growth": 10,
                     "max_peg_ratio": 2.5,
-                    "min_current_ratio": 1.0
-                }
+                    "min_current_ratio": 1.0,
+                },
             }
         }
 
@@ -166,38 +167,27 @@ class ScreenerCriteria(BaseModel):
         min_market_cap: Minimum market cap in billions
         sectors: List of sectors to include (None = all sectors)
     """
+
     min_earnings_growth: Optional[float] = Field(
-        10.0,
-        description="Minimum earnings growth rate (%)",
-        ge=0
+        10.0, description="Minimum earnings growth rate (%)", ge=0
     )
-    max_peg_ratio: Optional[float] = Field(
-        2.5,
-        description="Maximum PEG ratio",
-        ge=0
-    )
+    max_peg_ratio: Optional[float] = Field(2.5, description="Maximum PEG ratio", ge=0)
     min_current_ratio: Optional[float] = Field(
-        1.0,
-        description="Minimum current ratio",
-        ge=0
+        1.0, description="Minimum current ratio", ge=0
     )
     max_debt_to_equity: Optional[float] = Field(
-        2.0,
-        description="Maximum debt-to-equity ratio",
-        ge=0
+        2.0, description="Maximum debt-to-equity ratio", ge=0
     )
     min_market_cap: Optional[float] = Field(
-        1.0,
-        description="Minimum market cap in billions",
-        ge=0
+        1.0, description="Minimum market cap in billions", ge=0
     )
     sectors: Optional[List[str]] = Field(
-        None,
-        description="List of sectors to include (None = all)"
+        None, description="List of sectors to include (None = all)"
     )
 
     class Config:
         """Pydantic model configuration."""
+
         json_schema_extra = {
             "example": {
                 "min_earnings_growth": 15.0,
@@ -205,6 +195,6 @@ class ScreenerCriteria(BaseModel):
                 "min_current_ratio": 1.2,
                 "max_debt_to_equity": 1.5,
                 "min_market_cap": 2.0,
-                "sectors": ["Technology", "Healthcare"]
+                "sectors": ["Technology", "Healthcare"],
             }
         }
