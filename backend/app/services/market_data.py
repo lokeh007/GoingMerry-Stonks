@@ -632,7 +632,7 @@ class MarketDataProvider:
         try:
             logger.info(f"Fetching financials for: {ticker}")
 
-            response = requests.get(  # type: ignore[arg-type]
+            response = requests.get(  # type: ignore
                 endpoint, params=params, timeout=self.timeout
             )
 
