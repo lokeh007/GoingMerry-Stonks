@@ -312,13 +312,6 @@ const ProfitLossChart: React.FC<ProfitLossChartProps> = ({
     },
   };
 
-  /**
-   * Calculate position of current stock price indicator
-   */
-  const currentPriceIndex = strategyParams.currentStockPrice
-    ? stockPrices.findIndex(price => price >= (strategyParams.currentStockPrice || 0))
-    : -1;
-
   return (
     <div className={`profit-loss-chart-container ${className}`}>
       {/* Chart */}

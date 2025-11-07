@@ -84,6 +84,7 @@ jobs:
         with:
           name: backend-test-results
           path: backend/htmlcov/
+          if-no-files-found: warn
 
   backend-deploy:
     name: Deploy Backend API
@@ -188,6 +189,7 @@ jobs:
         with:
           name: frontend-test-results
           path: frontend/coverage/
+          if-no-files-found: warn
 
   frontend-deploy:
     name: Deploy Frontend

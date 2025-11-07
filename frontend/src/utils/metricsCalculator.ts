@@ -250,7 +250,6 @@ export const calculateMetricsFromCellData = (
 
   // Determine which option to use based on strategy and available data
   let premium = 0;
-  let optionStrike = strike;
   let isCall = false;
   let isLong = false;
 
@@ -335,6 +334,113 @@ export const calculateMetricsFromCellData = (
       };
     }
   }
+};
+
+/**
+ * Parameters for simplified metrics calculation
+ */
+export interface MetricsCalculationParams {
+  strategyType: 'short_put' | 'short_call' | 'long_call' | 'long_put';
+  strike: number;
+  premium: number;
+  quantity: number;
+  currentStockPrice: number;
+}
+
+/**
+ * Extended financial metrics with strike and quantity
+ */
+export interface ExtendedFinancialMetrics extends FinancialMetrics {
+  strike: number;
+  netDebit?: number; // For long positions (negative netCredit)
+}
+
+/**
+ * Calculate metrics for options strategies with simplified parameters
+ * This is a convenience wrapper for testing and simple calculations
+ *
+ * @param params - Calculation parameters
+ * @returns Extended financial metrics including strike price
+ * @throws Error if invalid strategy type, negative strike, or negative premium
+ */
+export const calculateMetrics = (
+  params: MetricsCalculationParams
+): ExtendedFinancialMetrics => {
+  const { strategyType, strike, premium, quantity, currentStockPrice } = params;
+
+  // Input validation
+  if (!['short_put', 'short_call', 'long_call', 'long_put'].includes(strategyType)) {
+    throw new Error(`Invalid strategy type: ${strategyType}`);
+  }
+
+  if (strike < 0) {
+    throw new Error('Strike price cannot be negative');
+  }
+
+  if (premium < 0) {
+    throw new Error('Premium cannot be negative');
+  }
+
+  // Create mock option contract
+  const mockOption: OptionContract = {
+    ticker: `MOCK_${strategyType}_${strike}`,
+    strike: strike,
+    option_type: strategyType.includes('call') ? 'call' : 'put',
+    expiration_date: new Date().toISOString(),
+    last_price: premium,
+    bid: strategyType.startsWith('short') ? premium : premium * 0.98,
+    ask: strategyType.startsWith('long') ? premium : premium * 1.02,
+    volume: 0,
+    open_interest: 0,
+    implied_volatility: 0,
+    delta: 0,
+    gamma: 0,
+    theta: 0,
+    vega: 0,
+  };
+
+  // Calculate base metrics
+  let baseMetrics: FinancialMetrics;
+
+  switch (strategyType) {
+    case 'short_put':
+      baseMetrics = calculateShortPutMetrics(mockOption, currentStockPrice);
+      break;
+    case 'short_call':
+      baseMetrics = calculateShortCallMetrics(mockOption, currentStockPrice);
+      break;
+    case 'long_call':
+      baseMetrics = calculateLongCallMetrics(mockOption, currentStockPrice);
+      break;
+    case 'long_put':
+      baseMetrics = calculateLongPutMetrics(mockOption, currentStockPrice);
+      break;
+    default:
+      throw new Error(`Unsupported strategy type: ${strategyType}`);
+  }
+
+  // Apply quantity multiplier to dollar amounts
+  const multipliedMetrics: FinancialMetrics = {
+    netCredit: baseMetrics.netCredit !== null ? baseMetrics.netCredit * quantity : null,
+    maxProfit: baseMetrics.maxProfit !== null ? baseMetrics.maxProfit * quantity : null,
+    maxLoss: baseMetrics.maxLoss !== null ? baseMetrics.maxLoss * quantity : null,
+    breakeven: baseMetrics.breakeven,
+    collateral: baseMetrics.collateral !== null ? baseMetrics.collateral * quantity : null,
+    returnOnCapital: baseMetrics.returnOnCapital,
+    riskRewardRatio: baseMetrics.riskRewardRatio,
+  };
+
+  // For long positions, add netDebit (positive version of netCredit)
+  const result: ExtendedFinancialMetrics = {
+    ...multipliedMetrics,
+    strike: strike,
+  };
+
+  if (strategyType.startsWith('long') && multipliedMetrics.netCredit !== null) {
+    result.netDebit = Math.abs(multipliedMetrics.netCredit);
+  }
+
+  return result;
 };
 
 /**
