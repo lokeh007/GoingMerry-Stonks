@@ -632,7 +632,9 @@ class MarketDataProvider:
         try:
             logger.info(f"Fetching financials for: {ticker}")
 
-            response = requests.get(endpoint, params=params, timeout=self.timeout)  # type: ignore[arg-type]
+            response = requests.get(  # type: ignore[arg-type]
+                endpoint, params=params, timeout=self.timeout
+            )
 
             if response.status_code == 404:
                 raise InvalidTickerError(f"Financials not found for ticker '{ticker}'")
