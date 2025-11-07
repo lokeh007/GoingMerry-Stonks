@@ -5,7 +5,7 @@ This module defines API endpoints for technical analysis operations,
 including retrieving price history and calculating technical indicators.
 """
 
-from typing import Optional, List
+from typing import Optional
 import logging
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -56,7 +56,10 @@ async def get_technical_analysis(
     ),
     indicators: Optional[str] = Query(
         None,
-        description="Comma-separated list of indicators (e.g., 'rsi,macd,ema12'). Leave empty for all.",
+        description=(
+            "Comma-separated list of indicators (e.g., 'rsi,macd,ema12'). "
+            "Leave empty for all."
+        ),
     ),
 ):
     """
@@ -149,7 +152,7 @@ async def get_technical_analysis(
             detail=f"Error generating technical analysis. {str(e)}",
         )
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error in technical analysis for {ticker}")
         raise HTTPException(
             status_code=500,
@@ -236,7 +239,7 @@ async def get_rsi(
         logger.error(f"Error calculating RSI for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error calculating RSI for {ticker}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -305,6 +308,6 @@ async def get_macd(
         logger.error(f"Error calculating MACD for {ticker}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception as e:
+    except Exception:
         logger.exception(f"Unexpected error calculating MACD for {ticker}")
         raise HTTPException(status_code=500, detail="Internal server error")

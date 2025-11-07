@@ -937,7 +937,8 @@ class MarketDataProvider:
 
         if universe_type in universes:
             logger.info(
-                f"Returning {universe_type} stock universe with {len(universes[universe_type])} tickers"
+                f"Returning {universe_type} stock universe with "
+                f"{len(universes[universe_type])} tickers"
             )
             return universes[universe_type]
 

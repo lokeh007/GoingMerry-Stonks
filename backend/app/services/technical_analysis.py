@@ -6,10 +6,9 @@ and various moving averages for stock price analysis.
 """
 
 from typing import Dict, List, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
 

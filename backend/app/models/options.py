@@ -6,7 +6,7 @@ Pydantic models for options data validation and serialization.
 
 from enum import Enum
 from typing import List, Optional
-from datetime import date, datetime
+from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 

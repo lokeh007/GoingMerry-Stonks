@@ -5,18 +5,13 @@ This module provides API endpoints for stock screening strategies,
 including the 'Alpha Engine' module for identifying investment opportunities.
 """
 
-from typing import Optional
 from datetime import datetime
 import logging
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 
-from ..models.screener import (
-    ScreenerResponse,
-    StockScreenerResult,
-    ScreenerCriteria,
-)
+from ..models.screener import ScreenerResponse, StockScreenerResult
 from ..services.market_data import MarketDataProvider, MarketDataError
 
 
