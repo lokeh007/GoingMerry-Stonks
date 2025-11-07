@@ -198,7 +198,7 @@ async def get_lynch_fast_growers(
                     continue
 
                 # Apply screening criteria
-                peg_ratio = financials["peg_ratio"] or float('inf')
+                peg_ratio = financials["peg_ratio"] or float("inf")
                 eps_growth = financials["eps_growth"] or 0
                 debt_to_equity = financials["debt_to_equity"] or 0
                 current_ratio = financials["current_ratio"] or 0
@@ -286,10 +286,7 @@ async def get_lynch_fast_growers(
 
     except Exception as e:
         logger.exception("Error in Lynch Fast Growers screening")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Screening error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Screening error: {str(e)}")
 
 
 @router.get(
@@ -316,37 +313,39 @@ async def list_screeners():
                 "Earnings growth: 10-25% annually",
                 "PEG ratio < 2.5",
                 "Current ratio > 1.0",
-                "Debt-to-equity < 2.0"
+                "Debt-to-equity < 2.0",
             ],
             "ideal_for": "Growth investors seeking undervalued high-growth stocks",
             "risk_level": "Medium",
-            "typical_holding_period": "2-5 years"
+            "typical_holding_period": "2-5 years",
         },
         {
             "name": "Value Screener",
             "endpoint": "/screener/value",
             "description": "Coming soon - Benjamin Graham value investing strategy",
-            "status": "planned"
+            "status": "planned",
         },
         {
             "name": "Dividend Aristocrats",
             "endpoint": "/screener/dividend-aristocrats",
             "description": "Coming soon - High-quality dividend stocks",
-            "status": "planned"
+            "status": "planned",
         },
         {
             "name": "Momentum Screener",
             "endpoint": "/screener/momentum",
             "description": "Coming soon - Stocks with strong price momentum",
-            "status": "planned"
-        }
+            "status": "planned",
+        },
     ]
 
-    return JSONResponse(content={
-        "total_screeners": len(screeners),
-        "screeners": screeners,
-        "alpha_engine_version": "1.0.0"
-    })
+    return JSONResponse(
+        content={
+            "total_screeners": len(screeners),
+            "screeners": screeners,
+            "alpha_engine_version": "1.0.0",
+        }
+    )
 
 
 def _calculate_lynch_score(financials: dict) -> float:
@@ -369,7 +368,7 @@ def _calculate_lynch_score(financials: dict) -> float:
 
     # PEG Ratio score (40 points max)
     # Perfect score: PEG < 0.5, Good: 0.5-0.75, Acceptable: 0.75-1.0
-    peg = financials.get("peg_ratio", float('inf'))
+    peg = financials.get("peg_ratio", float("inf"))
     if peg <= 0.5:
         score += 40
     elif peg <= 0.75:
@@ -396,7 +395,7 @@ def _calculate_lynch_score(financials: dict) -> float:
 
     # Debt-to-Equity score (20 points max)
     # Perfect: D/E < 0.25, Good: 0.25-0.5, Acceptable: 0.5-1.0
-    de_ratio = financials.get("debt_to_equity", float('inf'))
+    de_ratio = financials.get("debt_to_equity", float("inf"))
     if de_ratio < 0.25:
         score += 20
     elif de_ratio < 0.5:
@@ -438,7 +437,9 @@ def _generate_screening_reasons(financials: dict, criteria: dict) -> list[str]:
     peg = financials.get("peg_ratio", 0)
     if peg:
         if peg < 0.5:
-            reasons.append(f"Excellent PEG ratio ({peg:.2f}) - significantly undervalued")
+            reasons.append(
+                f"Excellent PEG ratio ({peg:.2f}) - significantly undervalued"
+            )
         elif peg < 0.75:
             reasons.append(f"Great PEG ratio ({peg:.2f}) - good value")
         elif peg < 1.0:

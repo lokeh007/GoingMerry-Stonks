@@ -23,21 +23,25 @@ logger = logging.getLogger(__name__)
 
 class MarketDataError(Exception):
     """Base exception for market data operations."""
+
     pass
 
 
 class APIConnectionError(MarketDataError):
     """Raised when unable to connect to the API."""
+
     pass
 
 
 class InvalidTickerError(MarketDataError):
     """Raised when an invalid ticker symbol is provided."""
+
     pass
 
 
 class RateLimitError(MarketDataError):
     """Raised when API rate limit is exceeded."""
+
     pass
 
 
@@ -126,11 +130,7 @@ class MarketDataProvider:
             logger.info(f"Fetching quote for ticker: {ticker}")
 
             # Make API request
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
+            response = requests.get(endpoint, params=params, timeout=self.timeout)
 
             # Handle HTTP errors
             if response.status_code == 404:
@@ -138,9 +138,7 @@ class MarketDataProvider:
                     f"Ticker '{ticker}' not found. Please verify the symbol."
                 )
             elif response.status_code == 429:
-                raise RateLimitError(
-                    "API rate limit exceeded. Please try again later."
-                )
+                raise RateLimitError("API rate limit exceeded. Please try again later.")
             elif response.status_code == 403:
                 raise APIConnectionError(
                     "API authentication failed. Please check your API key."
@@ -181,7 +179,11 @@ class MarketDataProvider:
 
             # Get timestamp
             timestamp_ms = agg_data.get("t", 0)
-            timestamp = datetime.fromtimestamp(timestamp_ms / 1000).isoformat() if timestamp_ms else datetime.now().isoformat()
+            timestamp = (
+                datetime.fromtimestamp(timestamp_ms / 1000).isoformat()
+                if timestamp_ms
+                else datetime.now().isoformat()
+            )
 
             # Construct response
             quote_data = {
@@ -209,24 +211,18 @@ class MarketDataProvider:
                 "Please check your connection and try again."
             )
         except HTTPError as e:
-            raise APIConnectionError(
-                f"HTTP error occurred: {str(e)}"
-            )
+            raise APIConnectionError(f"HTTP error occurred: {str(e)}")
         except RequestException as e:
-            raise APIConnectionError(
-                f"Network error occurred: {str(e)}"
-            )
+            raise APIConnectionError(f"Network error occurred: {str(e)}")
         except (KeyError, ValueError, TypeError) as e:
-            raise MarketDataError(
-                f"Error parsing API response: {str(e)}"
-            )
+            raise MarketDataError(f"Error parsing API response: {str(e)}")
 
     def get_option_chain(
         self,
         ticker: str,
         expiration_date: Optional[str] = None,
         atm_strikes: Optional[int] = None,
-        limit: int = 250
+        limit: int = 250,
     ) -> Dict[str, Any]:
         """
         Get the option chain for a given ticker symbol using yfinance.
@@ -282,11 +278,17 @@ class MarketDataProvider:
                 # Fallback to yfinance if Polygon.io fails
                 try:
                     info = stock.info
-                    stock_price = info.get('currentPrice') or info.get('regularMarketPrice', 0)
+                    stock_price = info.get("currentPrice") or info.get(
+                        "regularMarketPrice", 0
+                    )
                     if not stock_price:
-                        raise MarketDataError(f"Unable to retrieve stock price for {ticker}")
+                        raise MarketDataError(
+                            f"Unable to retrieve stock price for {ticker}"
+                        )
                 except Exception as e:
-                    raise MarketDataError(f"Unable to retrieve stock price for {ticker}: {e}")
+                    raise MarketDataError(
+                        f"Unable to retrieve stock price for {ticker}: {e}"
+                    )
 
             # Get available expiration dates
             expirations = stock.options
@@ -346,16 +348,18 @@ class MarketDataProvider:
                     calls_df = opt_chain.calls
                     for _, row in calls_df.iterrows():
                         call_contract = {
-                            "ticker": row.get('contractSymbol', ''),
-                            "strike": float(row.get('strike', 0)),
+                            "ticker": row.get("contractSymbol", ""),
+                            "strike": float(row.get("strike", 0)),
                             "expiration_date": exp_date,
                             "option_type": "call",
-                            "last_price": safe_float(row.get('lastPrice')),
-                            "bid": safe_float(row.get('bid')),
-                            "ask": safe_float(row.get('ask')),
-                            "volume": safe_int(row.get('volume')),
-                            "open_interest": safe_int(row.get('openInterest')),
-                            "implied_volatility": safe_float(row.get('impliedVolatility')),
+                            "last_price": safe_float(row.get("lastPrice")),
+                            "bid": safe_float(row.get("bid")),
+                            "ask": safe_float(row.get("ask")),
+                            "volume": safe_int(row.get("volume")),
+                            "open_interest": safe_int(row.get("openInterest")),
+                            "implied_volatility": safe_float(
+                                row.get("impliedVolatility")
+                            ),
                         }
                         all_calls.append(call_contract)
 
@@ -363,21 +367,25 @@ class MarketDataProvider:
                     puts_df = opt_chain.puts
                     for _, row in puts_df.iterrows():
                         put_contract = {
-                            "ticker": row.get('contractSymbol', ''),
-                            "strike": float(row.get('strike', 0)),
+                            "ticker": row.get("contractSymbol", ""),
+                            "strike": float(row.get("strike", 0)),
                             "expiration_date": exp_date,
                             "option_type": "put",
-                            "last_price": safe_float(row.get('lastPrice')),
-                            "bid": safe_float(row.get('bid')),
-                            "ask": safe_float(row.get('ask')),
-                            "volume": safe_int(row.get('volume')),
-                            "open_interest": safe_int(row.get('openInterest')),
-                            "implied_volatility": safe_float(row.get('impliedVolatility')),
+                            "last_price": safe_float(row.get("lastPrice")),
+                            "bid": safe_float(row.get("bid")),
+                            "ask": safe_float(row.get("ask")),
+                            "volume": safe_int(row.get("volume")),
+                            "open_interest": safe_int(row.get("openInterest")),
+                            "implied_volatility": safe_float(
+                                row.get("impliedVolatility")
+                            ),
                         }
                         all_puts.append(put_contract)
 
                 except Exception as e:
-                    logger.warning(f"Failed to fetch options for {ticker} expiring {exp_date}: {e}")
+                    logger.warning(
+                        f"Failed to fetch options for {ticker} expiring {exp_date}: {e}"
+                    )
                     continue
 
             # Combine all contracts
@@ -406,12 +414,16 @@ class MarketDataProvider:
                 all_puts = filtered_puts
                 all_contracts = all_calls + all_puts
 
-                logger.info(f"Filtered to {len(all_contracts)} contracts around ATM price ${stock_price}")
+                logger.info(
+                    f"Filtered to {len(all_contracts)} contracts around ATM price ${stock_price}"
+                )
 
             # Apply limit
             if len(all_contracts) > limit:
                 # Distribute limit between calls and puts proportionally
-                call_ratio = len(all_calls) / len(all_contracts) if all_contracts else 0.5
+                call_ratio = (
+                    len(all_calls) / len(all_contracts) if all_contracts else 0.5
+                )
                 call_limit = int(limit * call_ratio)
                 put_limit = limit - call_limit
 
@@ -427,7 +439,7 @@ class MarketDataProvider:
                 "contracts": all_contracts,
                 "total_contracts": len(all_contracts),
                 "available_expirations": available_expirations[:10],
-                "note": "Data provided by yfinance (15-minute delayed). Free and unlimited!"
+                "note": "Data provided by yfinance (15-minute delayed). Free and unlimited!",
             }
 
             logger.info(
@@ -441,9 +453,7 @@ class MarketDataProvider:
             raise
         except Exception as e:
             logger.error(f"Error fetching option chain for {ticker}: {e}")
-            raise MarketDataError(
-                f"Error fetching option chain for {ticker}: {str(e)}"
-            )
+            raise MarketDataError(f"Error fetching option chain for {ticker}: {str(e)}")
 
     def _get_option_snapshot(self, option_ticker: str) -> Dict[str, Any]:
         """
@@ -466,11 +476,7 @@ class MarketDataProvider:
         params = {"apiKey": self.api_key}
 
         try:
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
+            response = requests.get(endpoint, params=params, timeout=self.timeout)
 
             # Handle free tier limitation (403 Forbidden)
             if response.status_code == 403:
@@ -486,9 +492,7 @@ class MarketDataProvider:
 
             # Check for NOT_AUTHORIZED status in response body
             if data.get("status") == "NOT_AUTHORIZED":
-                logger.debug(
-                    "Options pricing requires paid Polygon.io subscription"
-                )
+                logger.debug("Options pricing requires paid Polygon.io subscription")
                 return {}
 
             results = data.get("results", {})
@@ -546,11 +550,7 @@ class MarketDataProvider:
         try:
             logger.info(f"Fetching ticker details for: {ticker}")
 
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
+            response = requests.get(endpoint, params=params, timeout=self.timeout)
 
             if response.status_code == 404:
                 raise InvalidTickerError(f"Ticker '{ticker}' not found")
@@ -564,7 +564,9 @@ class MarketDataProvider:
             data = response.json()
 
             if data.get("status") != "OK":
-                raise MarketDataError(f"API returned non-OK status: {data.get('status')}")
+                raise MarketDataError(
+                    f"API returned non-OK status: {data.get('status')}"
+                )
 
             results = data.get("results", {})
 
@@ -626,11 +628,7 @@ class MarketDataProvider:
         try:
             logger.info(f"Fetching financials for: {ticker}")
 
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
+            response = requests.get(endpoint, params=params, timeout=self.timeout)
 
             if response.status_code == 404:
                 raise InvalidTickerError(f"Financials not found for ticker '{ticker}'")
@@ -644,7 +642,9 @@ class MarketDataProvider:
             data = response.json()
 
             if data.get("status") != "OK":
-                raise MarketDataError(f"API returned non-OK status: {data.get('status')}")
+                raise MarketDataError(
+                    f"API returned non-OK status: {data.get('status')}"
+                )
 
             results = data.get("results", [])
 
@@ -659,7 +659,9 @@ class MarketDataProvider:
             # Extract balance sheet data
             balance_sheet = financials.get("balance_sheet", {})
             current_assets = balance_sheet.get("current_assets", {}).get("value", 0)
-            current_liabilities = balance_sheet.get("current_liabilities", {}).get("value", 0)
+            current_liabilities = balance_sheet.get("current_liabilities", {}).get(
+                "value", 0
+            )
             total_debt = balance_sheet.get("long_term_debt", {}).get("value", 0)
             total_equity = balance_sheet.get("equity", {}).get("value", 0)
 
@@ -667,7 +669,9 @@ class MarketDataProvider:
             income_statement = financials.get("income_statement", {})
             net_income = income_statement.get("net_income_loss", {}).get("value", 0)
             revenues = income_statement.get("revenues", {}).get("value", 0)
-            basic_eps = income_statement.get("basic_earnings_per_share", {}).get("value", 0)
+            basic_eps = income_statement.get("basic_earnings_per_share", {}).get(
+                "value", 0
+            )
 
             # Calculate financial ratios
             current_ratio = (
@@ -677,9 +681,7 @@ class MarketDataProvider:
             )
 
             debt_to_equity = (
-                total_debt / total_equity
-                if total_equity and total_equity != 0
-                else 0
+                total_debt / total_equity if total_equity and total_equity != 0 else 0
             )
 
             # Calculate growth rates (compare most recent to 4 quarters ago)
@@ -696,7 +698,9 @@ class MarketDataProvider:
                     eps_growth = ((basic_eps - old_eps) / abs(old_eps)) * 100
 
                 if old_revenues and old_revenues != 0:
-                    revenue_growth = ((revenues - old_revenues) / abs(old_revenues)) * 100
+                    revenue_growth = (
+                        (revenues - old_revenues) / abs(old_revenues)
+                    ) * 100
 
             # Get current stock price for PE calculation
             try:
@@ -708,9 +712,7 @@ class MarketDataProvider:
 
                 # Calculate PEG ratio (PE / earnings growth rate)
                 peg_ratio = (
-                    pe_ratio / eps_growth
-                    if eps_growth and eps_growth > 0
-                    else 0
+                    pe_ratio / eps_growth if eps_growth and eps_growth > 0 else 0
                 )
 
             except Exception as e:
@@ -722,7 +724,9 @@ class MarketDataProvider:
             # Get market cap from ticker details
             try:
                 details = self.get_ticker_details(ticker)
-                market_cap = details.get("market_cap", 0) / 1_000_000_000  # Convert to billions
+                market_cap = (
+                    details.get("market_cap", 0) / 1_000_000_000
+                )  # Convert to billions
             except Exception:
                 market_cap = 0
 
@@ -802,38 +806,145 @@ class MarketDataProvider:
         universes = {
             "popular": [
                 # Technology
-                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
-                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
+                "AAPL",
+                "MSFT",
+                "GOOGL",
+                "META",
+                "NVDA",
+                "TSLA",
+                "AMD",
+                "INTC",
+                "AVGO",
+                "ADBE",
+                "CRM",
+                "ORCL",
+                "CSCO",
+                "QCOM",
+                "NOW",
+                "AMAT",
                 # Finance
-                "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW",
+                "JPM",
+                "BAC",
+                "WFC",
+                "GS",
+                "MS",
+                "C",
+                "BLK",
+                "SCHW",
                 # Healthcare
-                "JNJ", "UNH", "PFE", "ABBV", "TMO", "LLY", "MRK", "ABT",
+                "JNJ",
+                "UNH",
+                "PFE",
+                "ABBV",
+                "TMO",
+                "LLY",
+                "MRK",
+                "ABT",
                 # Consumer
-                "AMZN", "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "COST",
+                "AMZN",
+                "WMT",
+                "HD",
+                "MCD",
+                "NKE",
+                "SBUX",
+                "TGT",
+                "COST",
                 # Industrial
-                "BA", "CAT", "HON", "MMM", "GE", "RTX",
+                "BA",
+                "CAT",
+                "HON",
+                "MMM",
+                "GE",
+                "RTX",
             ],
             "sp500_sample": [
-                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B",
-                "UNH", "XOM", "JNJ", "JPM", "V", "PG", "MA", "HD", "CVX",
-                "LLY", "ABBV", "MRK", "PEP", "COST", "AVGO", "WMT", "ADBE",
-                "CRM", "MCD", "CSCO", "ACN", "NFLX", "TMO", "ABT", "DHR",
-                "NKE", "BAC", "DIS", "TXN", "VZ", "INTC", "PM", "UPS",
+                "AAPL",
+                "MSFT",
+                "GOOGL",
+                "AMZN",
+                "NVDA",
+                "META",
+                "TSLA",
+                "BRK.B",
+                "UNH",
+                "XOM",
+                "JNJ",
+                "JPM",
+                "V",
+                "PG",
+                "MA",
+                "HD",
+                "CVX",
+                "LLY",
+                "ABBV",
+                "MRK",
+                "PEP",
+                "COST",
+                "AVGO",
+                "WMT",
+                "ADBE",
+                "CRM",
+                "MCD",
+                "CSCO",
+                "ACN",
+                "NFLX",
+                "TMO",
+                "ABT",
+                "DHR",
+                "NKE",
+                "BAC",
+                "DIS",
+                "TXN",
+                "VZ",
+                "INTC",
+                "PM",
+                "UPS",
             ],
             "tech": [
-                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
-                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
-                "NFLX", "UBER", "SNOW", "PLTR", "COIN", "SQ", "SHOP", "ZM",
-                "TWLO", "CRWD", "NET", "DDOG", "MDB", "FTNT", "PANW",
+                "AAPL",
+                "MSFT",
+                "GOOGL",
+                "META",
+                "NVDA",
+                "TSLA",
+                "AMD",
+                "INTC",
+                "AVGO",
+                "ADBE",
+                "CRM",
+                "ORCL",
+                "CSCO",
+                "QCOM",
+                "NOW",
+                "AMAT",
+                "NFLX",
+                "UBER",
+                "SNOW",
+                "PLTR",
+                "COIN",
+                "SQ",
+                "SHOP",
+                "ZM",
+                "TWLO",
+                "CRWD",
+                "NET",
+                "DDOG",
+                "MDB",
+                "FTNT",
+                "PANW",
             ],
         }
 
         if universe_type in universes:
-            logger.info(f"Returning {universe_type} stock universe with {len(universes[universe_type])} tickers")
+            logger.info(
+                f"Returning {universe_type} stock universe with {len(universes[universe_type])} tickers"
+            )
             return universes[universe_type]
 
         # Default to popular stocks
-        logger.warning(f"Unknown universe type '{universe_type}', returning popular stocks")
+        logger.warning(
+            f"Unknown universe type '{universe_type}', returning popular stocks"
+        )
         return universes["popular"]
 
     def get_vix(self) -> Dict[str, Any]:
@@ -867,16 +978,16 @@ class MarketDataProvider:
 
             # Try to get current price from various fields
             current_price = None
-            if 'regularMarketPrice' in vix_info:
-                current_price = vix_info['regularMarketPrice']
-            elif 'previousClose' in vix_info:
-                current_price = vix_info['previousClose']
+            if "regularMarketPrice" in vix_info:
+                current_price = vix_info["regularMarketPrice"]
+            elif "previousClose" in vix_info:
+                current_price = vix_info["previousClose"]
 
             if current_price is None:
                 # Fallback: get from history
                 hist = vix.history(period="1d")
                 if not hist.empty:
-                    current_price = float(hist['Close'].iloc[-1])
+                    current_price = float(hist["Close"].iloc[-1])
 
             if current_price is None:
                 raise MarketDataError("Unable to retrieve VIX value")
@@ -904,11 +1015,7 @@ class MarketDataProvider:
             endpoint = f"{self.base_url}/v2/aggs/ticker/AAPL/prev"
             params = {"apiKey": self.api_key}
 
-            response = requests.get(
-                endpoint,
-                params=params,
-                timeout=self.timeout
-            )
+            response = requests.get(endpoint, params=params, timeout=self.timeout)
 
             return response.status_code == 200
         except RequestException:

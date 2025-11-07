@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 class TechnicalAnalysisError(Exception):
     """Base exception for technical analysis operations."""
+
     pass
 
 
@@ -36,10 +37,7 @@ class TechnicalAnalysisProvider:
         logger.info("Initialized TechnicalAnalysisProvider")
 
     def get_price_history(
-        self,
-        ticker: str,
-        period: str = "6mo",
-        interval: str = "1d"
+        self, ticker: str, period: str = "6mo", interval: str = "1d"
     ) -> pd.DataFrame:
         """
         Fetch historical price data for a ticker.
@@ -56,7 +54,9 @@ class TechnicalAnalysisProvider:
             TechnicalAnalysisError: If unable to fetch data
         """
         try:
-            logger.info(f"Fetching price history for {ticker} (period={period}, interval={interval})")
+            logger.info(
+                f"Fetching price history for {ticker} (period={period}, interval={interval})"
+            )
 
             stock = yf.Ticker(ticker)
             hist = stock.history(period=period, interval=interval)
@@ -143,7 +143,7 @@ class TechnicalAnalysisProvider:
         data: pd.Series,
         fast_period: int = 12,
         slow_period: int = 26,
-        signal_period: int = 9
+        signal_period: int = 9,
     ) -> Dict[str, pd.Series]:
         """
         Calculate MACD (Moving Average Convergence Divergence).
@@ -184,17 +184,10 @@ class TechnicalAnalysisProvider:
         # Calculate histogram
         histogram = macd_line - signal_line
 
-        return {
-            'macd': macd_line,
-            'signal': signal_line,
-            'histogram': histogram
-        }
+        return {"macd": macd_line, "signal": signal_line, "histogram": histogram}
 
     def calculate_bollinger_bands(
-        self,
-        data: pd.Series,
-        period: int = 20,
-        std_dev: float = 2.0
+        self, data: pd.Series, period: int = 20, std_dev: float = 2.0
     ) -> Dict[str, pd.Series]:
         """
         Calculate Bollinger Bands.
@@ -216,18 +209,14 @@ class TechnicalAnalysisProvider:
         upper_band = middle_band + (std_dev * rolling_std)
         lower_band = middle_band - (std_dev * rolling_std)
 
-        return {
-            'upper': upper_band,
-            'middle': middle_band,
-            'lower': lower_band
-        }
+        return {"upper": upper_band, "middle": middle_band, "lower": lower_band}
 
     def get_technical_analysis(
         self,
         ticker: str,
         period: str = "6mo",
         interval: str = "1d",
-        indicators: Optional[List[str]] = None
+        indicators: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Get comprehensive technical analysis data for a ticker.
@@ -255,72 +244,86 @@ class TechnicalAnalysisProvider:
 
             # If no indicators specified, calculate all
             if indicators is None:
-                indicators = ['rsi', 'macd', 'ema12', 'ema26', 'ema50', 'ema200',
-                            'sma20', 'sma50', 'sma200', 'bollinger']
+                indicators = [
+                    "rsi",
+                    "macd",
+                    "ema12",
+                    "ema26",
+                    "ema50",
+                    "ema200",
+                    "sma20",
+                    "sma50",
+                    "sma200",
+                    "bollinger",
+                ]
 
             # Extract close prices for calculations
-            close_prices = hist['Close']
+            close_prices = hist["Close"]
 
             # Calculate requested indicators
             result = {
-                'ticker': ticker.upper(),
-                'period': period,
-                'interval': interval,
-                'data_points': len(hist),
-                'price_data': {
-                    'dates': hist.index.strftime('%Y-%m-%d').tolist(),
-                    'open': hist['Open'].tolist(),
-                    'high': hist['High'].tolist(),
-                    'low': hist['Low'].tolist(),
-                    'close': hist['Close'].tolist(),
-                    'volume': hist['Volume'].tolist(),
+                "ticker": ticker.upper(),
+                "period": period,
+                "interval": interval,
+                "data_points": len(hist),
+                "price_data": {
+                    "dates": hist.index.strftime("%Y-%m-%d").tolist(),
+                    "open": hist["Open"].tolist(),
+                    "high": hist["High"].tolist(),
+                    "low": hist["Low"].tolist(),
+                    "close": hist["Close"].tolist(),
+                    "volume": hist["Volume"].tolist(),
                 },
-                'indicators': {}
+                "indicators": {},
             }
 
             # RSI
-            if 'rsi' in indicators:
+            if "rsi" in indicators:
                 rsi = self.calculate_rsi(close_prices)
-                result['indicators']['rsi'] = rsi.fillna(0).tolist()
-                result['indicators']['rsi_current'] = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None
+                result["indicators"]["rsi"] = rsi.fillna(0).tolist()
+                result["indicators"]["rsi_current"] = (
+                    float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None
+                )
 
             # MACD
-            if 'macd' in indicators:
+            if "macd" in indicators:
                 macd_data = self.calculate_macd(close_prices)
-                result['indicators']['macd'] = {
-                    'macd_line': macd_data['macd'].fillna(0).tolist(),
-                    'signal_line': macd_data['signal'].fillna(0).tolist(),
-                    'histogram': macd_data['histogram'].fillna(0).tolist(),
+                result["indicators"]["macd"] = {
+                    "macd_line": macd_data["macd"].fillna(0).tolist(),
+                    "signal_line": macd_data["signal"].fillna(0).tolist(),
+                    "histogram": macd_data["histogram"].fillna(0).tolist(),
                 }
 
             # EMAs
             for period_num in [12, 26, 50, 200]:
-                indicator_name = f'ema{period_num}'
+                indicator_name = f"ema{period_num}"
                 if indicator_name in indicators:
                     ema = self.calculate_ema(close_prices, period_num)
-                    result['indicators'][indicator_name] = ema.fillna(0).tolist()
+                    result["indicators"][indicator_name] = ema.fillna(0).tolist()
 
             # SMAs
             for period_num in [20, 50, 200]:
-                indicator_name = f'sma{period_num}'
+                indicator_name = f"sma{period_num}"
                 if indicator_name in indicators:
                     sma = self.calculate_sma(close_prices, period_num)
-                    result['indicators'][indicator_name] = sma.fillna(0).tolist()
+                    result["indicators"][indicator_name] = sma.fillna(0).tolist()
 
             # Bollinger Bands
-            if 'bollinger' in indicators:
+            if "bollinger" in indicators:
                 bb = self.calculate_bollinger_bands(close_prices)
-                result['indicators']['bollinger'] = {
-                    'upper': bb['upper'].fillna(0).tolist(),
-                    'middle': bb['middle'].fillna(0).tolist(),
-                    'lower': bb['lower'].fillna(0).tolist(),
+                result["indicators"]["bollinger"] = {
+                    "upper": bb["upper"].fillna(0).tolist(),
+                    "middle": bb["middle"].fillna(0).tolist(),
+                    "lower": bb["lower"].fillna(0).tolist(),
                 }
 
-            result['timestamp'] = datetime.now().isoformat()
+            result["timestamp"] = datetime.now().isoformat()
 
             logger.info(f"Successfully generated technical analysis for {ticker}")
             return result
 
         except Exception as e:
             logger.error(f"Error generating technical analysis for {ticker}: {str(e)}")
-            raise TechnicalAnalysisError(f"Failed to generate technical analysis: {str(e)}")
+            raise TechnicalAnalysisError(
+                f"Failed to generate technical analysis: {str(e)}"
+            )

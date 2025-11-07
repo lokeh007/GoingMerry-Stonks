@@ -125,7 +125,7 @@ async def get_technical_analysis(
         # Parse indicators if provided
         indicator_list = None
         if indicators:
-            indicator_list = [ind.strip() for ind in indicators.split(',')]
+            indicator_list = [ind.strip() for ind in indicators.split(",")]
 
         # Get technical analysis data
         analysis_data = technical_provider.get_technical_analysis(
@@ -203,7 +203,7 @@ async def get_rsi(
         hist = technical_provider.get_price_history(ticker.upper(), period=period)
 
         # Calculate RSI
-        rsi_values = technical_provider.calculate_rsi(hist['Close'], period=rsi_period)
+        rsi_values = technical_provider.calculate_rsi(hist["Close"], period=rsi_period)
 
         # Get current RSI
         current_rsi = float(rsi_values.iloc[-1]) if not rsi_values.empty else None
@@ -223,8 +223,10 @@ async def get_rsi(
             "current_rsi": current_rsi,
             "status": status,
             "rsi_values": rsi_values.fillna(0).tolist(),
-            "dates": hist.index.strftime('%Y-%m-%d').tolist(),
-            "timestamp": technical_provider.get_price_history(ticker, period).__class__.__name__,
+            "dates": hist.index.strftime("%Y-%m-%d").tolist(),
+            "timestamp": technical_provider.get_price_history(
+                ticker, period
+            ).__class__.__name__,
         }
 
         logger.info(f"Successfully calculated RSI for {ticker}: {current_rsi:.2f}")
@@ -278,22 +280,22 @@ async def get_macd(
         hist = technical_provider.get_price_history(ticker.upper(), period=period)
 
         # Calculate MACD
-        macd_data = technical_provider.calculate_macd(hist['Close'])
+        macd_data = technical_provider.calculate_macd(hist["Close"])
 
         result = {
             "ticker": ticker.upper(),
             "period": period,
             "macd": {
-                "macd_line": macd_data['macd'].fillna(0).tolist(),
-                "signal_line": macd_data['signal'].fillna(0).tolist(),
-                "histogram": macd_data['histogram'].fillna(0).tolist(),
+                "macd_line": macd_data["macd"].fillna(0).tolist(),
+                "signal_line": macd_data["signal"].fillna(0).tolist(),
+                "histogram": macd_data["histogram"].fillna(0).tolist(),
             },
             "current": {
-                "macd": float(macd_data['macd'].iloc[-1]),
-                "signal": float(macd_data['signal'].iloc[-1]),
-                "histogram": float(macd_data['histogram'].iloc[-1]),
+                "macd": float(macd_data["macd"].iloc[-1]),
+                "signal": float(macd_data["signal"].iloc[-1]),
+                "histogram": float(macd_data["histogram"].iloc[-1]),
             },
-            "dates": hist.index.strftime('%Y-%m-%d').tolist(),
+            "dates": hist.index.strftime("%Y-%m-%d").tolist(),
         }
 
         logger.info(f"Successfully calculated MACD for {ticker}")

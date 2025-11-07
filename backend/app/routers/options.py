@@ -268,12 +268,11 @@ async def get_option_chain_summary(
                 c.get("volume", 0) for c in calls + puts if c.get("volume")
             ),
             "total_open_interest": sum(
-                c.get("open_interest", 0) for c in calls + puts
+                c.get("open_interest", 0)
+                for c in calls + puts
                 if c.get("open_interest")
             ),
-            "call_put_ratio": (
-                len(calls) / len(puts) if len(puts) > 0 else None
-            ),
+            "call_put_ratio": (len(calls) / len(puts) if len(puts) > 0 else None),
             "timestamp": datetime.now().isoformat(),
         }
 
