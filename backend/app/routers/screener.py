@@ -704,9 +704,26 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
 
         logger.info(f"Phase 1 complete: {len(fundamental_passed)} passed fundamental filters")
 
+        # Optimization: Limit stocks for technical analysis to prevent excessive API calls
+        MAX_STOCKS_FOR_TECHNICAL = 100
+        apply_technical = _should_apply_technical_filters(request.technical_filters)
+
+        if apply_technical and len(fundamental_passed) > MAX_STOCKS_FOR_TECHNICAL:
+            logger.info(
+                f"Phase 1 returned {len(fundamental_passed)} stocks. "
+                f"Limiting to top {MAX_STOCKS_FOR_TECHNICAL} by Lynch score for technical analysis."
+            )
+            # Calculate scores and sort to get top performers
+            scored_stocks = [
+                (ticker, financials, _calculate_lynch_score(financials))
+                for ticker, financials in fundamental_passed
+            ]
+            scored_stocks.sort(key=lambda x: x[2], reverse=True)
+            fundamental_passed = [(t, f) for t, f, s in scored_stocks[:MAX_STOCKS_FOR_TECHNICAL]]
+            logger.info(f"Limited to top {len(fundamental_passed)} stocks for technical analysis")
+
         # Phase 2 & 3: Apply technical filters and market regime
         results = []
-        apply_technical = _should_apply_technical_filters(request.technical_filters)
         apply_market_regime = request.market_regime != MarketRegime.ANY
 
         # Get VIX if needed
@@ -793,8 +810,11 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                         if request.technical_filters.gann_location != GannLocation.ANY:
                             current_price = financials.get("price", 0)
                             if current_price:
-                                gann_levels = gann_calc.calculate_gann_levels(current_price)
-                                at_level = gann_calc.is_at_key_level(current_price, current_price)
+                                # Use 52-week low as reference for support/resistance calculation
+                                # This gives meaningful Gann levels based on recent price action
+                                reference_price = financials.get("52_week_low", current_price)
+                                gann_levels = gann_calc.calculate_gann_levels(current_price, reference_price)
+                                at_level = gann_calc.is_at_key_level(current_price, reference_price)
 
                                 if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
                                     if not at_level["at_support"]:

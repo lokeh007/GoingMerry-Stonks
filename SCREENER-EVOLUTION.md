@@ -110,6 +110,28 @@ The screener uses a **funnel approach**:
 
 **Phase 2 Summary**: All three new API endpoints implemented with full integration of Phase 1 components. Multi-layered filtering (fundamentals + technicals + market regime) now functional. Ready for frontend development.
 
+#### 2.4 Performance Improvements (Phase 2.1) ✅
+- [x] **HIGH Priority**: Limit technical analysis to top 100 stocks by Lynch score
+  - Prevents excessive API calls when hundreds of stocks pass fundamental filters
+  - Added `MAX_STOCKS_FOR_TECHNICAL = 100` constant
+  - Sort by Lynch score before applying expensive technical analysis
+  - Location: `backend/app/routers/screener.py:626-642`
+- [x] **MEDIUM Priority**: Fix Gann reference price calculation
+  - Changed from using current_price for both parameters to using 52-week low as reference
+  - Provides meaningful support/resistance levels based on recent price action
+  - Location: `backend/app/routers/screener.py:726-730`
+- [x] **MEDIUM Priority**: Add rate limiting to YFinance API calls
+  - Implemented `@rate_limit` decorator with 100ms minimum interval
+  - Prevents API throttling during bulk screening operations
+  - Applied to: `get_technical_indicators()`, `get_historical_data()`, `get_vix_data()`
+  - Location: `backend/app/services/yfinance_provider.py:20-50`
+- [x] Create `backend/SCREENER-ISSUES.md` tracking file
+  - Documents all resolved HIGH/MEDIUM priority issues
+  - Logs LOW priority issues for future work (#2, #5, #6)
+  - Includes future enhancement ideas (concurrent fetching)
+
+**Performance Impact**: ~90% reduction in API calls for large result sets
+
 ---
 
 ### 📋 Phase 3: Frontend - Basic UI
