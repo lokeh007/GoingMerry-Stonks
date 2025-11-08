@@ -38,6 +38,13 @@ from ..financial_models.patterns import get_pattern_detector
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Module-level constants
+# Mapping for field name translation between model and screening reasons
+_CRITERIA_KEY_MAP = {
+    "min_eps_growth": "min_earnings_growth",
+    "max_eps_growth": "max_earnings_growth",
+}
+
 # Initialize router
 router = APIRouter(
     prefix="/screener",
@@ -713,6 +720,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                             if current_price:
                                 gann_levels = gann_calc.calculate_gann_levels(current_price)
 
+                                # Check if at support or resistance level
                                 if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
                                     at_level = gann_calc.is_at_key_level(current_price, gann_levels["nearest_support"])
                                     if not at_level["at_support"]:
@@ -722,7 +730,8 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                                     if not at_level["at_resistance"]:
                                         continue
                                 else:
-                                    at_level = gann_calc.is_at_key_level(current_price, current_price)
+                                    # Skip if location type is unknown
+                                    continue
 
                                 gann = GannLevels(
                                     nearest_support=gann_levels["nearest_support"],
@@ -749,28 +758,10 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                 score = _calculate_lynch_score(financials)
 
                 # Map model dump keys to expected keys for _generate_screening_reasons
-                _criteria_key_map = {
-                    "min_eps_growth": "min_earnings_growth",
-                    "max_eps_growth": "max_earnings_growth",
-                    "min_peg_ratio": "min_peg_ratio",
-                    "max_peg_ratio": "max_peg_ratio",
-                    "min_pe_ratio": "min_pe_ratio",
-                    "max_pe_ratio": "max_pe_ratio",
-                    "min_revenue_growth": "min_revenue_growth",
-                    "max_revenue_growth": "max_revenue_growth",
-                    "min_debt_to_equity": "min_debt_to_equity",
-                    "max_debt_to_equity": "max_debt_to_equity",
-                    "min_current_ratio": "min_current_ratio",
-                    "max_current_ratio": "max_current_ratio",
-                    "min_roe": "min_roe",
-                    "max_roe": "max_roe",
-                    "min_institutional_ownership": "min_institutional_ownership",
-                    "max_institutional_ownership": "max_institutional_ownership",
-                }
                 raw_criteria = request.fundamental_filters.model_dump()
                 criteria = {}
                 for k, v in raw_criteria.items():
-                    mapped_key = _criteria_key_map.get(k, k)
+                    mapped_key = _CRITERIA_KEY_MAP.get(k, k)
                     criteria[mapped_key] = v
                 reasons = _generate_screening_reasons(financials, criteria)
 
@@ -846,8 +837,9 @@ def _passes_fundamental_filters(financials: dict, filters: FundamentalFilters) -
 
     # EPS Growth
     eps_growth = financials.get("eps_growth")
-    if eps_growth is None:
-        return False
+    if filters.min_eps_growth is not None or filters.max_eps_growth is not None:
+        if eps_growth is None:
+            return False
     if filters.min_eps_growth is not None and eps_growth < filters.min_eps_growth:
         return False
     if filters.max_eps_growth is not None and eps_growth > filters.max_eps_growth:
