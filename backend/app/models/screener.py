@@ -4,9 +4,96 @@ Screener Data Models.
 Pydantic models for stock screening and analysis results.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime
+from enum import Enum
 from pydantic import BaseModel, Field, field_validator
+
+
+# Enums for categorical fields
+
+class LynchCategory(str, Enum):
+    """Peter Lynch's six stock categories."""
+
+    FAST_GROWERS = "fast_growers"
+    STALWARTS = "stalwarts"
+    SLOW_GROWERS = "slow_growers"
+    CYCLICALS = "cyclicals"
+    TURNAROUNDS = "turnarounds"
+    ASSET_PLAYS = "asset_plays"
+
+
+class MarketRegime(str, Enum):
+    """Market regime based on VIX levels."""
+
+    ANY = "any"
+    LOW_FEAR = "low_fear"  # VIX < 20
+    MODERATE_FEAR = "moderate_fear"  # VIX 20-30
+    HIGH_FEAR = "high_fear"  # VIX > 30
+
+
+class RSICondition(str, Enum):
+    """RSI-based conditions."""
+
+    ANY = "any"
+    OVERSOLD = "oversold"  # RSI < 30
+    NEUTRAL = "neutral"  # RSI 30-70
+    OVERBOUGHT = "overbought"  # RSI > 70
+
+
+class MACDCondition(str, Enum):
+    """MACD-based conditions."""
+
+    ANY = "any"
+    BULLISH_CROSSOVER = "bullish_crossover"
+    BEARISH_CROSSOVER = "bearish_crossover"
+
+
+class BulkowskiPattern(str, Enum):
+    """Bulkowski chart patterns."""
+
+    ANY = "any"
+    PIPE_BOTTOM = "pipe_bottom"
+    DOUBLE_BOTTOM = "double_bottom"
+
+
+class GannLocation(str, Enum):
+    """Position relative to Gann levels."""
+
+    ANY = "any"
+    AT_SUPPORT = "at_support"
+    AT_RESISTANCE = "at_resistance"
+
+
+# Data Models
+
+class TechnicalIndicators(BaseModel):
+    """Technical indicator values for a stock."""
+
+    rsi_current: Optional[float] = Field(None, description="Current RSI value", ge=0, le=100)
+    rsi_oversold: bool = Field(False, description="Is RSI oversold (< 30)")
+    rsi_overbought: bool = Field(False, description="Is RSI overbought (> 70)")
+    macd_bullish_crossover: bool = Field(False, description="MACD bullish crossover detected")
+    macd_bearish_crossover: bool = Field(False, description="MACD bearish crossover detected")
+
+
+class PatternDetection(BaseModel):
+    """Chart pattern detection results."""
+
+    pattern_name: Optional[str] = Field(None, description="Detected pattern name")
+    detected: bool = Field(False, description="Pattern detected")
+    confidence: int = Field(0, description="Confidence score (0-100)", ge=0, le=100)
+    description: Optional[str] = Field(None, description="Pattern description")
+
+
+class GannLevels(BaseModel):
+    """Gann Square of 9 levels."""
+
+    nearest_support: Optional[float] = Field(None, description="Nearest support level")
+    nearest_resistance: Optional[float] = Field(None, description="Nearest resistance level")
+    at_support: bool = Field(False, description="Currently at support level")
+    at_resistance: bool = Field(False, description="Currently at resistance level")
+    position: Optional[str] = Field(None, description="Position relative to levels")
 
 
 class StockScreenerResult(BaseModel):
@@ -54,6 +141,25 @@ class StockScreenerResult(BaseModel):
         None, description="Debt-to-Equity ratio", ge=0
     )
     current_ratio: Optional[float] = Field(None, description="Current ratio", ge=0)
+    roe: Optional[float] = Field(None, description="Return on Equity (%)")
+    institutional_ownership: Optional[float] = Field(
+        None, description="Institutional ownership (%)", ge=0, le=100
+    )
+
+    # Technical indicators (optional, only included if requested)
+    technical_indicators: Optional[TechnicalIndicators] = Field(
+        None, description="Technical indicator values"
+    )
+
+    # Pattern detection (optional, only included if requested)
+    pattern: Optional[PatternDetection] = Field(
+        None, description="Chart pattern detection"
+    )
+
+    # Gann levels (optional, only included if requested)
+    gann_levels: Optional[GannLevels] = Field(
+        None, description="Gann Square of 9 levels"
+    )
 
     # Screening results
     score: float = Field(..., description="Screening score (0-100)", ge=0, le=100)
@@ -196,5 +302,112 @@ class ScreenerCriteria(BaseModel):
                 "max_debt_to_equity": 1.5,
                 "min_market_cap": 2.0,
                 "sectors": ["Technology", "Healthcare"],
+            }
+        }
+
+
+class FundamentalFilters(BaseModel):
+    """
+    Fundamental screening filters (Lynch criteria).
+
+    All filters are optional. If None, the filter is not applied.
+    """
+
+    max_peg_ratio: Optional[float] = Field(
+        1.0, description="Maximum PEG ratio", ge=0, le=10
+    )
+    min_eps_growth: Optional[float] = Field(
+        15.0, description="Minimum EPS growth (%)", ge=-100, le=1000
+    )
+    max_eps_growth: Optional[float] = Field(
+        30.0, description="Maximum EPS growth (%)", ge=-100, le=1000
+    )
+    max_debt_to_equity: Optional[float] = Field(
+        0.6, description="Maximum debt-to-equity ratio", ge=0, le=10
+    )
+    min_roe: Optional[float] = Field(
+        15.0, description="Minimum ROE (%)", ge=-100, le=1000
+    )
+    max_institutional_ownership: Optional[float] = Field(
+        30.0, description="Maximum institutional ownership (%)", ge=0, le=100
+    )
+    min_market_cap: Optional[float] = Field(
+        1.0, description="Minimum market cap in billions", ge=0.001, le=10000
+    )
+    min_current_ratio: Optional[float] = Field(
+        1.0, description="Minimum current ratio", ge=0, le=10
+    )
+
+
+class TechnicalFilters(BaseModel):
+    """
+    Technical analysis filters (Section 2: Triggers).
+
+    All filters are optional. If set to ANY, the filter is not applied.
+    """
+
+    rsi_condition: RSICondition = Field(
+        RSICondition.ANY, description="RSI condition filter"
+    )
+    macd_condition: MACDCondition = Field(
+        MACDCondition.ANY, description="MACD condition filter"
+    )
+    pattern: BulkowskiPattern = Field(
+        BulkowskiPattern.ANY, description="Chart pattern filter"
+    )
+    gann_location: GannLocation = Field(
+        GannLocation.ANY, description="Gann level location filter"
+    )
+
+
+class AdvancedScreenerRequest(BaseModel):
+    """
+    Request model for advanced multi-layered stock screening.
+
+    Combines Lynch fundamentals, technical triggers, and market context.
+    """
+
+    lynch_category: LynchCategory = Field(
+        LynchCategory.FAST_GROWERS, description="Lynch stock category"
+    )
+    fundamental_filters: FundamentalFilters = Field(
+        default_factory=FundamentalFilters, description="Fundamental screening criteria"
+    )
+    technical_filters: TechnicalFilters = Field(
+        default_factory=TechnicalFilters, description="Technical trigger filters"
+    )
+    market_regime: MarketRegime = Field(
+        MarketRegime.ANY, description="Market regime filter (VIX-based)"
+    )
+    universe: str = Field(
+        "popular", description="Stock universe to screen (popular, sp500_sample, tech, nasdaq, nyse, all)"
+    )
+    page: int = Field(1, description="Page number for pagination", ge=1)
+    page_size: int = Field(50, description="Results per page", ge=1, le=100)
+
+    class Config:
+        """Pydantic model configuration."""
+
+        json_schema_extra = {
+            "example": {
+                "lynch_category": "fast_growers",
+                "fundamental_filters": {
+                    "max_peg_ratio": 1.0,
+                    "min_eps_growth": 15,
+                    "max_eps_growth": 30,
+                    "max_debt_to_equity": 0.6,
+                    "min_roe": 15,
+                    "max_institutional_ownership": 30,
+                },
+                "technical_filters": {
+                    "rsi_condition": "oversold",
+                    "macd_condition": "bullish_crossover",
+                    "pattern": "pipe_bottom",
+                    "gann_location": "at_support",
+                },
+                "market_regime": "high_fear",
+                "universe": "popular",
+                "page": 1,
+                "page_size": 50,
             }
         }
