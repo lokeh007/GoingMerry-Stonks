@@ -741,7 +741,31 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                 score = _calculate_lynch_score(financials)
 
                 # Generate reasons
-                reasons = _generate_screening_reasons(financials, request.fundamental_filters.model_dump())
+                # Map model dump keys to expected keys for _generate_screening_reasons
+                _criteria_key_map = {
+                    "min_eps_growth": "min_earnings_growth",
+                    "max_eps_growth": "max_earnings_growth",
+                    "min_peg_ratio": "min_peg_ratio",
+                    "max_peg_ratio": "max_peg_ratio",
+                    "min_pe_ratio": "min_pe_ratio",
+                    "max_pe_ratio": "max_pe_ratio",
+                    "min_revenue_growth": "min_revenue_growth",
+                    "max_revenue_growth": "max_revenue_growth",
+                    "min_debt_to_equity": "min_debt_to_equity",
+                    "max_debt_to_equity": "max_debt_to_equity",
+                    "min_current_ratio": "min_current_ratio",
+                    "max_current_ratio": "max_current_ratio",
+                    "min_roe": "min_roe",
+                    "max_roe": "max_roe",
+                    "min_institutional_ownership": "min_institutional_ownership",
+                    "max_institutional_ownership": "max_institutional_ownership",
+                }
+                raw_criteria = request.fundamental_filters.model_dump()
+                criteria = {}
+                for k, v in raw_criteria.items():
+                    mapped_key = _criteria_key_map.get(k, k)
+                    criteria[mapped_key] = v
+                reasons = _generate_screening_reasons(financials, criteria)
 
                 # Create result
                 result = StockScreenerResult(
