@@ -7,12 +7,31 @@ including the 'Alpha Engine' module for identifying investment opportunities.
 
 from datetime import datetime
 import logging
+from typing import Optional
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Body
 from fastapi.responses import JSONResponse
 
-from ..models.screener import ScreenerResponse, StockScreenerResult
+from ..models.screener import (
+    ScreenerResponse,
+    StockScreenerResult,
+    LynchCategory,
+    FundamentalFilters,
+    TechnicalFilters,
+    AdvancedScreenerRequest,
+    TechnicalIndicators,
+    PatternDetection,
+    GannLevels,
+    RSICondition,
+    MACDCondition,
+    BulkowskiPattern,
+    GannLocation,
+    MarketRegime,
+)
 from ..services.market_data import MarketDataProvider, MarketDataError
+from ..services.yfinance_provider import YFinanceProvider
+from ..financial_models.gann import get_gann_calculator
+from ..financial_models.patterns import get_pattern_detector
 
 
 # Configure logging
@@ -341,6 +360,572 @@ async def list_screeners():
             "alpha_engine_version": "1.0.0",
         }
     )
+
+
+@router.get(
+    "/presets/{category}",
+    summary="Get Lynch Category Filter Presets",
+    description="Get recommended filter values for a specific Peter Lynch stock category.",
+)
+async def get_category_presets(category: LynchCategory):
+    """
+    Get recommended filter presets for a Lynch stock category.
+
+    Each category has specific criteria based on Peter Lynch's investment philosophy:
+    - **Fast Growers**: Rapid growth at reasonable prices
+    - **Stalwarts**: Large, reliable companies on sale
+    - **Slow Growers**: High dividend, stable companies
+    - **Cyclicals**: Timing business cycles
+    - **Turnarounds**: Companies recovering from difficulties
+    - **Asset Plays**: Hidden value in assets
+
+    **Parameters:**
+    - **category**: Lynch category (fast_growers, stalwarts, etc.)
+
+    **Returns:**
+    Recommended filter values and investment philosophy for the category.
+    """
+    presets = {
+        LynchCategory.FAST_GROWERS: {
+            "category": "fast_growers",
+            "name": "Fast Growers",
+            "description": "Companies with 15-30% annual growth, trading at reasonable valuations",
+            "philosophy": "Lynch's most profitable category. Look for companies in early growth phase with strong fundamentals and PEG < 1.0",
+            "filters": {
+                "max_peg_ratio": 1.0,
+                "min_eps_growth": 15.0,
+                "max_eps_growth": 30.0,
+                "max_debt_to_equity": 0.6,
+                "min_roe": 15.0,
+                "max_institutional_ownership": 30.0,
+                "min_market_cap": 1.0,
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Growth investors seeking 'tenbagger' potential",
+            "holding_period": "2-5 years",
+            "risk_level": "Medium",
+        },
+        LynchCategory.STALWARTS: {
+            "category": "stalwarts",
+            "name": "Stalwarts",
+            "description": "Large, well-known companies with consistent moderate growth",
+            "philosophy": "Blue-chip stocks bought during market corrections. Less exciting but reliable 30-50% gains",
+            "filters": {
+                "max_peg_ratio": 1.5,
+                "min_eps_growth": 10.0,
+                "max_eps_growth": 15.0,
+                "max_debt_to_equity": 0.8,
+                "min_roe": 12.0,
+                "max_institutional_ownership": None,  # Any
+                "min_market_cap": 10.0,  # Large caps
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Conservative investors seeking reliability",
+            "holding_period": "3-5 years",
+            "risk_level": "Low",
+        },
+        LynchCategory.SLOW_GROWERS: {
+            "category": "slow_growers",
+            "name": "Slow Growers",
+            "description": "Mature companies with high dividends and minimal growth",
+            "philosophy": "Buy for dividends, not price appreciation. Utilities, mature industrials",
+            "filters": {
+                "max_peg_ratio": None,  # Not applicable
+                "min_eps_growth": None,  # Can be negative
+                "max_eps_growth": 10.0,
+                "max_debt_to_equity": 1.0,
+                "min_roe": 8.0,
+                "max_institutional_ownership": None,
+                "min_market_cap": 5.0,
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Income investors seeking stable dividends",
+            "holding_period": "5+ years",
+            "risk_level": "Very Low",
+        },
+        LynchCategory.CYCLICALS: {
+            "category": "cyclicals",
+            "name": "Cyclicals",
+            "description": "Companies whose fortunes rise and fall with economic cycles",
+            "philosophy": "Timing is everything. Buy at cycle bottom, sell at peak. Airlines, autos, steel",
+            "filters": {
+                "max_peg_ratio": 1.0,
+                "min_eps_growth": None,  # Cyclical, not linear
+                "max_eps_growth": None,
+                "max_debt_to_equity": 1.0,
+                "min_roe": None,  # Can be negative during downturns
+                "max_institutional_ownership": None,
+                "min_market_cap": 1.0,
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Experienced investors who can time economic cycles",
+            "holding_period": "6 months - 2 years",
+            "risk_level": "High",
+        },
+        LynchCategory.TURNAROUNDS: {
+            "category": "turnarounds",
+            "name": "Turnarounds",
+            "description": "Companies recovering from severe difficulties",
+            "philosophy": "High risk, high reward. Focus on balance sheet health and signs of recovery",
+            "filters": {
+                "max_peg_ratio": None,  # Often negative earnings
+                "min_eps_growth": None,  # Can be negative
+                "max_eps_growth": None,
+                "max_debt_to_equity": 0.5,  # Must have manageable debt
+                "min_roe": None,  # Can be negative
+                "max_institutional_ownership": None,
+                "min_market_cap": 0.5,
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Risk-tolerant investors seeking asymmetric upside",
+            "holding_period": "1-3 years",
+            "risk_level": "Very High",
+        },
+        LynchCategory.ASSET_PLAYS: {
+            "category": "asset_plays",
+            "name": "Asset Plays",
+            "description": "Companies with hidden assets undervalued by the market",
+            "philosophy": "Market doesn't recognize true value of assets (real estate, patents, inventory)",
+            "filters": {
+                "max_peg_ratio": None,  # Not applicable
+                "min_eps_growth": None,
+                "max_eps_growth": None,
+                "max_debt_to_equity": 0.5,  # Must be able to hold assets
+                "min_roe": None,
+                "max_institutional_ownership": 50.0,  # Often undiscovered
+                "min_market_cap": 0.3,  # Often small caps
+                "min_current_ratio": 1.0,
+            },
+            "ideal_for": "Value investors seeking hidden gems",
+            "holding_period": "2-5 years",
+            "risk_level": "Medium-High",
+        },
+    }
+
+    preset = presets.get(category)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Category '{category}' not found")
+
+    logger.info(f"Returning preset for category: {category}")
+    return JSONResponse(content=preset)
+
+
+@router.get(
+    "/vix",
+    summary="Get Market Volatility (VIX) Data",
+    description="Get current VIX value and market regime classification.",
+)
+async def get_vix_data():
+    """
+    Get current VIX (Volatility Index) and market regime.
+
+    The VIX, known as the "Fear Gauge", measures market volatility expectations.
+
+    **Market Regimes:**
+    - **Low Fear** (VIX < 20): Bullish, low volatility market
+    - **Moderate Fear** (VIX 20-30): Normal market conditions
+    - **High Fear** (VIX > 30): Bearish, high volatility market (opportunities for deep value)
+
+    **Returns:**
+    VIX value, market regime, and timestamp.
+    """
+    try:
+        yf_provider = YFinanceProvider()
+        vix_info = yf_provider.get_vix_data()
+
+        logger.info(
+            f"VIX data retrieved: {vix_info['value']:.2f} ({vix_info['regime_label']})"
+        )
+
+        return JSONResponse(content=vix_info)
+
+    except Exception as e:
+        logger.error(f"Error fetching VIX data: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch VIX data: {str(e)}")
+
+
+@router.post(
+    "/advanced",
+    response_model=ScreenerResponse,
+    summary="Advanced Multi-Layered Stock Screener",
+    description="Screen stocks using Lynch fundamentals, technical triggers, and market context.",
+)
+async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
+    """
+    Run advanced multi-layered stock screening.
+
+    This endpoint combines:
+    1. **Lynch Fundamentals** (Section 1): Filter by PEG, EPS growth, D/E, ROE, etc.
+    2. **Technical Triggers** (Section 2): Filter by RSI, MACD, patterns, Gann levels
+    3. **Market Context** (Section 3): Filter by VIX-based market regime
+
+    **Example Classic Setup:**
+    ```json
+    {
+        "lynch_category": "fast_growers",
+        "fundamental_filters": {
+            "max_peg_ratio": 1.0,
+            "min_eps_growth": 15,
+            "max_eps_growth": 30,
+            "max_debt_to_equity": 0.6
+        },
+        "technical_filters": {
+            "rsi_condition": "oversold",
+            "macd_condition": "bullish_crossover"
+        },
+        "market_regime": "high_fear"
+    }
+    ```
+
+    This finds high-quality fast growers that are oversold during market panic - a classic professional setup.
+
+    **Returns:**
+    Paginated list of stocks with full fundamental and technical data.
+    """
+    try:
+        logger.info(
+            f"Advanced screening request: category={request.lynch_category.value}, "
+            f"universe={request.universe}, page={request.page}"
+        )
+
+        # Initialize providers
+        market_data = MarketDataProvider()
+        yf_provider = YFinanceProvider()
+        gann_calc = get_gann_calculator()
+        pattern_detector = get_pattern_detector()
+
+        # Get stock universe
+        if request.universe in ["nasdaq", "nyse", "all"]:
+            tickers = yf_provider.get_stock_universe(request.universe.upper())
+        else:
+            tickers = market_data.get_stock_universe(request.universe)
+
+        logger.info(f"Screening {len(tickers)} stocks from '{request.universe}' universe")
+
+        # Phase 1: Apply fundamental filters (Lynch criteria)
+        fundamental_passed = []
+        for ticker in tickers:
+            try:
+                financials = market_data.get_stock_financials(ticker)
+
+                if not financials.get("peg_ratio") or not financials.get("eps_growth"):
+                    continue
+
+                # Apply fundamental filters
+                if not _passes_fundamental_filters(financials, request.fundamental_filters):
+                    continue
+
+                fundamental_passed.append((ticker, financials))
+
+            except Exception as e:
+                logger.debug(f"Skipping {ticker}: {e}")
+                continue
+
+        logger.info(f"Phase 1 complete: {len(fundamental_passed)} passed fundamental filters")
+
+        # Phase 2 & 3: Apply technical filters and market regime
+        results = []
+        apply_technical = _should_apply_technical_filters(request.technical_filters)
+        apply_market_regime = request.market_regime != MarketRegime.ANY
+
+        # Get VIX if needed
+        current_vix = None
+        if apply_market_regime:
+            try:
+                vix_data = yf_provider.get_vix_data()
+                current_vix = vix_data["value"]
+                current_regime = vix_data["regime"]
+
+                # Filter by market regime
+                if not _passes_market_regime_filter(current_vix, current_regime, request.market_regime):
+                    logger.info(
+                        f"Market regime filter failed: current={current_regime}, "
+                        f"required={request.market_regime.value}"
+                    )
+                    # Return empty results if market regime doesn't match
+                    return ScreenerResponse(
+                        screener_name=f"Advanced Screener - {request.lynch_category.value}",
+                        description=f"Market regime {current_regime} does not match filter {request.market_regime.value}",
+                        total_results=0,
+                        results=[],
+                        timestamp=datetime.now(),
+                        criteria=request.model_dump(),
+                    )
+            except Exception as e:
+                logger.warning(f"Could not fetch VIX, skipping market regime filter: {e}")
+
+        # Process each stock that passed fundamentals
+        for ticker, financials in fundamental_passed:
+            try:
+                # Fetch technical data if needed
+                tech_indicators = None
+                pattern = None
+                gann = None
+
+                if apply_technical:
+                    try:
+                        # Get technical indicators
+                        indicators = yf_provider.get_technical_indicators(ticker, period="3mo")
+
+                        # Apply RSI filter
+                        if request.technical_filters.rsi_condition != RSICondition.ANY:
+                            if not _passes_rsi_filter(indicators, request.technical_filters.rsi_condition):
+                                continue
+
+                        # Apply MACD filter
+                        if request.technical_filters.macd_condition != MACDCondition.ANY:
+                            if not _passes_macd_filter(indicators, request.technical_filters.macd_condition):
+                                continue
+
+                        # Build technical indicators model
+                        tech_indicators = TechnicalIndicators(
+                            rsi_current=indicators["rsi"]["current"],
+                            rsi_oversold=indicators["rsi"]["oversold"],
+                            rsi_overbought=indicators["rsi"]["overbought"],
+                            macd_bullish_crossover=indicators["macd"]["bullish_crossover"],
+                            macd_bearish_crossover=indicators["macd"]["bearish_crossover"],
+                        )
+
+                        # Pattern detection
+                        if request.technical_filters.pattern != BulkowskiPattern.ANY:
+                            hist_data = yf_provider.get_historical_data(ticker, period="6mo")
+
+                            # Mapping from BulkowskiPattern to detection methods
+                            pattern_detection_map = {
+                                BulkowskiPattern.PIPE_BOTTOM: pattern_detector.detect_pipe_bottom,
+                                BulkowskiPattern.DOUBLE_BOTTOM: pattern_detector.detect_double_bottom,
+                                # Add new patterns here as needed
+                            }
+
+                            detect_func = pattern_detection_map.get(request.technical_filters.pattern)
+                            if detect_func is not None:
+                                pattern_result = detect_func(hist_data)
+                            else:
+                                pattern_result = {"detected": False}
+
+                            if not pattern_result["detected"]:
+                                continue
+
+                            pattern = PatternDetection(**pattern_result)
+
+                        # Gann level detection
+                        if request.technical_filters.gann_location != GannLocation.ANY:
+                            current_price = financials.get("price", 0)
+                            if current_price:
+                                gann_levels = gann_calc.calculate_gann_levels(current_price)
+                                at_level = gann_calc.is_at_key_level(current_price, current_price)
+
+                                if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
+                                    if not at_level["at_support"]:
+                                        continue
+                                elif request.technical_filters.gann_location == GannLocation.AT_RESISTANCE:
+                                    if not at_level["at_resistance"]:
+                                        continue
+
+                                gann = GannLevels(
+                                    nearest_support=gann_levels["nearest_support"],
+                                    nearest_resistance=gann_levels["nearest_resistance"],
+                                    at_support=at_level["at_support"],
+                                    at_resistance=at_level["at_resistance"],
+                                    position=gann_levels["current_position"],
+                                )
+
+                    except Exception as e:
+                        logger.debug(f"Technical analysis failed for {ticker}: {e}")
+                        continue
+
+                # Get ticker details
+                try:
+                    details = market_data.get_ticker_details(ticker)
+                    company_name = details.get("name", ticker)
+                    sector = details.get("sector", "")
+                except Exception:
+                    company_name = ticker
+                    sector = ""
+
+                # Calculate score
+                score = _calculate_lynch_score(financials)
+
+                # Generate reasons
+                # Map model dump keys to expected keys for _generate_screening_reasons
+                _criteria_key_map = {
+                    "min_eps_growth": "min_earnings_growth",
+                    "max_eps_growth": "max_earnings_growth",
+                    "min_peg_ratio": "min_peg_ratio",
+                    "max_peg_ratio": "max_peg_ratio",
+                    "min_pe_ratio": "min_pe_ratio",
+                    "max_pe_ratio": "max_pe_ratio",
+                    "min_revenue_growth": "min_revenue_growth",
+                    "max_revenue_growth": "max_revenue_growth",
+                    "min_debt_to_equity": "min_debt_to_equity",
+                    "max_debt_to_equity": "max_debt_to_equity",
+                    "min_current_ratio": "min_current_ratio",
+                    "max_current_ratio": "max_current_ratio",
+                    "min_roe": "min_roe",
+                    "max_roe": "max_roe",
+                    "min_institutional_ownership": "min_institutional_ownership",
+                    "max_institutional_ownership": "max_institutional_ownership",
+                }
+                raw_criteria = request.fundamental_filters.model_dump()
+                criteria = {}
+                for k, v in raw_criteria.items():
+                    mapped_key = _criteria_key_map.get(k, k)
+                    criteria[mapped_key] = v
+                reasons = _generate_screening_reasons(financials, criteria)
+
+                # Create result
+                result = StockScreenerResult(
+                    ticker=ticker,
+                    company_name=company_name,
+                    sector=sector,
+                    market_cap=financials.get("market_cap"),
+                    price=financials.get("price"),
+                    pe_ratio=financials.get("pe_ratio"),
+                    peg_ratio=financials.get("peg_ratio"),
+                    revenue_growth=financials.get("revenue_growth"),
+                    earnings_growth=financials.get("eps_growth"),
+                    debt_to_equity=financials.get("debt_to_equity"),
+                    current_ratio=financials.get("current_ratio"),
+                    roe=financials.get("roe"),
+                    institutional_ownership=financials.get("institutional_ownership"),
+                    technical_indicators=tech_indicators,
+                    pattern=pattern,
+                    gann_levels=gann,
+                    score=score,
+                    reasons=reasons,
+                )
+
+                results.append(result)
+
+            except Exception as e:
+                logger.error(f"Error processing {ticker}: {e}")
+                continue
+
+        # Sort by score
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        # Apply pagination
+        start_idx = (request.page - 1) * request.page_size
+        end_idx = start_idx + request.page_size
+        paginated_results = results[start_idx:end_idx]
+
+        logger.info(
+            f"Screening complete: {len(results)} total, "
+            f"returning {len(paginated_results)} for page {request.page}"
+        )
+
+        return ScreenerResponse(
+            screener_name=f"Advanced Screener - {request.lynch_category.value.replace('_', ' ').title()}",
+            description=f"Multi-layered screening with fundamental and technical filters",
+            total_results=len(results),
+            results=paginated_results,
+            timestamp=datetime.now(),
+            criteria=request.model_dump(),
+        )
+
+    except Exception as e:
+        logger.exception("Error in advanced screening")
+        raise HTTPException(status_code=500, detail=f"Screening error: {str(e)}")
+
+
+# Helper functions for advanced screener
+
+def _passes_fundamental_filters(financials: dict, filters: FundamentalFilters) -> bool:
+    """Check if stock passes fundamental filters."""
+    # PEG Ratio
+    if filters.max_peg_ratio is not None:
+        peg = financials.get("peg_ratio", float("inf"))
+        if peg > filters.max_peg_ratio:
+            return False
+
+    # EPS Growth
+    eps_growth = financials.get("eps_growth", 0)
+    if filters.min_eps_growth is not None and eps_growth < filters.min_eps_growth:
+        return False
+    if filters.max_eps_growth is not None and eps_growth > filters.max_eps_growth:
+        return False
+
+    # Debt-to-Equity
+    if filters.max_debt_to_equity is not None:
+        de_ratio = financials.get("debt_to_equity", float("inf"))
+        if de_ratio > filters.max_debt_to_equity:
+            return False
+
+    # ROE
+    if filters.min_roe is not None:
+        roe = financials.get("roe", 0)
+        if roe < filters.min_roe:
+            return False
+
+    # Institutional Ownership
+    if filters.max_institutional_ownership is not None:
+        inst_own = financials.get("institutional_ownership", 100)
+        if inst_own > filters.max_institutional_ownership:
+            return False
+
+    # Market Cap
+    if filters.min_market_cap is not None:
+        market_cap = financials.get("market_cap", 0)
+        if market_cap < filters.min_market_cap:
+            return False
+
+    # Current Ratio
+    if filters.min_current_ratio is not None:
+        current_ratio = financials.get("current_ratio", 0)
+        if current_ratio < filters.min_current_ratio:
+            return False
+
+    return True
+
+
+def _should_apply_technical_filters(filters: TechnicalFilters) -> bool:
+    """Check if any technical filters are active."""
+    return (
+        filters.rsi_condition != RSICondition.ANY
+        or filters.macd_condition != MACDCondition.ANY
+        or filters.pattern != BulkowskiPattern.ANY
+        or filters.gann_location != GannLocation.ANY
+    )
+
+
+def _passes_rsi_filter(indicators: dict, condition: RSICondition) -> bool:
+    """Check if RSI passes filter condition."""
+    rsi = indicators["rsi"]["current"]
+    if rsi is None:
+        return False
+
+    if condition == RSICondition.OVERSOLD:
+        return rsi < 30
+    elif condition == RSICondition.NEUTRAL:
+        return 30 <= rsi <= 70
+    elif condition == RSICondition.OVERBOUGHT:
+        return rsi > 70
+
+    return True
+
+
+def _passes_macd_filter(indicators: dict, condition: MACDCondition) -> bool:
+    """Check if MACD passes filter condition."""
+    if condition == MACDCondition.BULLISH_CROSSOVER:
+        return indicators["macd"]["bullish_crossover"]
+    elif condition == MACDCondition.BEARISH_CROSSOVER:
+        return indicators["macd"]["bearish_crossover"]
+
+    return True
+
+
+def _passes_market_regime_filter(vix: float, current_regime: str, required_regime: MarketRegime) -> bool:
+    """Check if current market regime matches required regime."""
+    if required_regime == MarketRegime.ANY:
+        return True
+    elif required_regime == MarketRegime.LOW_FEAR:
+        return current_regime == "low_fear"
+    elif required_regime == MarketRegime.MODERATE_FEAR:
+        return current_regime == "moderate_fear"
+    elif required_regime == MarketRegime.HIGH_FEAR:
+        return current_regime == "high_fear"
+
+    return True
 
 
 def _calculate_lynch_score(financials: dict) -> float:
