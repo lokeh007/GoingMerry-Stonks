@@ -725,7 +725,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                     )
                     # Return empty results if market regime doesn't match
                     return ScreenerResponse(
-                        screener_name=f"Advanced Screener - {request.lynch_category.value}",
+                        screener_name=_format_screener_display_name(request.lynch_category),
                         description=f"Market regime {current_regime} does not match filter {request.market_regime.value}",
                         total_results=0,
                         results=[],
@@ -896,7 +896,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         )
 
         return ScreenerResponse(
-            screener_name=f"Advanced Screener - {request.lynch_category.value.replace('_', ' ').title()}",
+            screener_name=_format_screener_display_name(request.lynch_category),
             description=f"Multi-layered screening with fundamental and technical filters",
             total_results=len(results),
             results=paginated_results,
@@ -910,6 +910,21 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
 
 
 # Helper functions for advanced screener
+
+def _format_screener_display_name(lynch_category: LynchCategory) -> str:
+    """
+    Format Lynch category value for display in screener name.
+
+    Converts enum values like 'fast_growers' to 'Fast Growers'.
+
+    Args:
+        lynch_category: The Lynch category enum value
+
+    Returns:
+        Formatted display name string
+    """
+    return f"Advanced Screener - {lynch_category.value.replace('_', ' ').title()}"
+
 
 def _passes_fundamental_filters(financials: dict, filters: FundamentalFilters) -> bool:
     """Check if stock passes fundamental filters."""
