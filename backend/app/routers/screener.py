@@ -7,7 +7,6 @@ including the 'Alpha Engine' module for identifying investment opportunities.
 
 from datetime import datetime
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException, Body
 from fastapi.responses import JSONResponse
@@ -207,7 +206,7 @@ async def get_lynch_fast_growers(
                 financials = market_data.get_stock_financials(ticker)
 
                 # Skip if essential data is missing
-                if not financials.get("peg_ratio") or not financials.get("eps_growth"):
+                if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:
                     logger.debug(f"Skipping {ticker}: Missing PEG or EPS growth data")
                     continue
 
@@ -608,7 +607,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
             try:
                 financials = market_data.get_stock_financials(ticker)
 
-                if not financials.get("peg_ratio") or not financials.get("eps_growth"):
+                if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:
                     continue
 
                 # Apply fundamental filters
@@ -629,15 +628,13 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         apply_market_regime = request.market_regime != MarketRegime.ANY
 
         # Get VIX if needed
-        current_vix = None
         if apply_market_regime:
             try:
                 vix_data = yf_provider.get_vix_data()
-                current_vix = vix_data["value"]
                 current_regime = vix_data["regime"]
 
                 # Filter by market regime
-                if not _passes_market_regime_filter(current_vix, current_regime, request.market_regime):
+                if not _passes_market_regime_filter(current_regime, request.market_regime):
                     logger.info(
                         f"Market regime filter failed: current={current_regime}, "
                         f"required={request.market_regime.value}"
@@ -690,10 +687,16 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                         if request.technical_filters.pattern != BulkowskiPattern.ANY:
                             hist_data = yf_provider.get_historical_data(ticker, period="6mo")
 
-                            if request.technical_filters.pattern == BulkowskiPattern.PIPE_BOTTOM:
-                                pattern_result = pattern_detector.detect_pipe_bottom(hist_data)
-                            elif request.technical_filters.pattern == BulkowskiPattern.DOUBLE_BOTTOM:
-                                pattern_result = pattern_detector.detect_double_bottom(hist_data)
+                            # Mapping from BulkowskiPattern to detection methods
+                            pattern_detection_map = {
+                                BulkowskiPattern.PIPE_BOTTOM: pattern_detector.detect_pipe_bottom,
+                                BulkowskiPattern.DOUBLE_BOTTOM: pattern_detector.detect_double_bottom,
+                                # Add new patterns here as needed
+                            }
+
+                            detect_func = pattern_detection_map.get(request.technical_filters.pattern)
+                            if detect_func is not None:
+                                pattern_result = detect_func(hist_data)
                             else:
                                 pattern_result = {"detected": False}
 
@@ -707,14 +710,17 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                             current_price = financials.get("price", 0)
                             if current_price:
                                 gann_levels = gann_calc.calculate_gann_levels(current_price)
-                                at_level = gann_calc.is_at_key_level(current_price, current_price)
 
                                 if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
+                                    at_level = gann_calc.is_at_key_level(current_price, gann_levels["nearest_support"])
                                     if not at_level["at_support"]:
                                         continue
                                 elif request.technical_filters.gann_location == GannLocation.AT_RESISTANCE:
+                                    at_level = gann_calc.is_at_key_level(current_price, gann_levels["nearest_resistance"])
                                     if not at_level["at_resistance"]:
                                         continue
+                                else:
+                                    at_level = gann_calc.is_at_key_level(current_price, current_price)
 
                                 gann = GannLevels(
                                     nearest_support=gann_levels["nearest_support"],
@@ -740,8 +746,31 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                 # Calculate score
                 score = _calculate_lynch_score(financials)
 
-                # Generate reasons
-                reasons = _generate_screening_reasons(financials, request.fundamental_filters.model_dump())
+                # Map model dump keys to expected keys for _generate_screening_reasons
+                _criteria_key_map = {
+                    "min_eps_growth": "min_earnings_growth",
+                    "max_eps_growth": "max_earnings_growth",
+                    "min_peg_ratio": "min_peg_ratio",
+                    "max_peg_ratio": "max_peg_ratio",
+                    "min_pe_ratio": "min_pe_ratio",
+                    "max_pe_ratio": "max_pe_ratio",
+                    "min_revenue_growth": "min_revenue_growth",
+                    "max_revenue_growth": "max_revenue_growth",
+                    "min_debt_to_equity": "min_debt_to_equity",
+                    "max_debt_to_equity": "max_debt_to_equity",
+                    "min_current_ratio": "min_current_ratio",
+                    "max_current_ratio": "max_current_ratio",
+                    "min_roe": "min_roe",
+                    "max_roe": "max_roe",
+                    "min_institutional_ownership": "min_institutional_ownership",
+                    "max_institutional_ownership": "max_institutional_ownership",
+                }
+                raw_criteria = request.fundamental_filters.model_dump()
+                criteria = {}
+                for k, v in raw_criteria.items():
+                    mapped_key = _criteria_key_map.get(k, k)
+                    criteria[mapped_key] = v
+                reasons = _generate_screening_reasons(financials, criteria)
 
                 # Create result
                 result = StockScreenerResult(
@@ -785,8 +814,8 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         )
 
         return ScreenerResponse(
-            screener_name=f"Advanced Screener - {request.lynch_category.value.replace('_', ' ').title()}",
-            description=f"Multi-layered screening with fundamental and technical filters",
+            screener_name=f"Advanced Screener - {_format_category_display_name(request.lynch_category.value)}",
+            description="Multi-layered screening with fundamental and technical filters",
             total_results=len(results),
             results=paginated_results,
             timestamp=datetime.now(),
@@ -800,16 +829,23 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
 
 # Helper functions for advanced screener
 
+def _format_category_display_name(category: str) -> str:
+    """Convert category enum value to display name."""
+    return category.replace('_', ' ').title()
+
+
 def _passes_fundamental_filters(financials: dict, filters: FundamentalFilters) -> bool:
     """Check if stock passes fundamental filters."""
     # PEG Ratio
     if filters.max_peg_ratio is not None:
-        peg = financials.get("peg_ratio", float("inf"))
-        if peg > filters.max_peg_ratio:
+        peg = financials.get("peg_ratio")
+        if peg is None or peg > filters.max_peg_ratio:
             return False
 
     # EPS Growth
-    eps_growth = financials.get("eps_growth", 0)
+    eps_growth = financials.get("eps_growth")
+    if eps_growth is None:
+        return False
     if filters.min_eps_growth is not None and eps_growth < filters.min_eps_growth:
         return False
     if filters.max_eps_growth is not None and eps_growth > filters.max_eps_growth:
@@ -817,8 +853,8 @@ def _passes_fundamental_filters(financials: dict, filters: FundamentalFilters) -
 
     # Debt-to-Equity
     if filters.max_debt_to_equity is not None:
-        de_ratio = financials.get("debt_to_equity", float("inf"))
-        if de_ratio > filters.max_debt_to_equity:
+        de_ratio = financials.get("debt_to_equity")
+        if de_ratio is None or de_ratio > filters.max_debt_to_equity:
             return False
 
     # ROE
@@ -884,7 +920,7 @@ def _passes_macd_filter(indicators: dict, condition: MACDCondition) -> bool:
     return True
 
 
-def _passes_market_regime_filter(vix: float, current_regime: str, required_regime: MarketRegime) -> bool:
+def _passes_market_regime_filter(current_regime: str, required_regime: MarketRegime) -> bool:
     """Check if current market regime matches required regime."""
     if required_regime == MarketRegime.ANY:
         return True
