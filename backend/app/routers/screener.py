@@ -690,10 +690,16 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                         if request.technical_filters.pattern != BulkowskiPattern.ANY:
                             hist_data = yf_provider.get_historical_data(ticker, period="6mo")
 
-                            if request.technical_filters.pattern == BulkowskiPattern.PIPE_BOTTOM:
-                                pattern_result = pattern_detector.detect_pipe_bottom(hist_data)
-                            elif request.technical_filters.pattern == BulkowskiPattern.DOUBLE_BOTTOM:
-                                pattern_result = pattern_detector.detect_double_bottom(hist_data)
+                            # Mapping from BulkowskiPattern to detection methods
+                            pattern_detection_map = {
+                                BulkowskiPattern.PIPE_BOTTOM: pattern_detector.detect_pipe_bottom,
+                                BulkowskiPattern.DOUBLE_BOTTOM: pattern_detector.detect_double_bottom,
+                                # Add new patterns here as needed
+                            }
+
+                            detect_func = pattern_detection_map.get(request.technical_filters.pattern)
+                            if detect_func is not None:
+                                pattern_result = detect_func(hist_data)
                             else:
                                 pattern_result = {"detected": False}
 
