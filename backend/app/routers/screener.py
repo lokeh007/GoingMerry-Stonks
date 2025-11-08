@@ -8,6 +8,8 @@ including the 'Alpha Engine' module for identifying investment opportunities.
 from datetime import datetime
 import logging
 from typing import Optional
+import asyncio
+from functools import partial
 
 from fastapi import APIRouter, Query, HTTPException, Body
 from fastapi.responses import JSONResponse
@@ -544,6 +546,74 @@ async def get_vix_data():
         raise HTTPException(status_code=500, detail=f"Failed to fetch VIX data: {str(e)}")
 
 
+async def _fetch_financials_async(
+    ticker: str, 
+    market_data: MarketDataProvider, 
+    semaphore: asyncio.Semaphore
+) -> tuple[str, Optional[Dict]]:
+    """
+    Asynchronously fetch financials for a single ticker with semaphore control.
+    
+    Args:
+        ticker: Stock ticker symbol
+        market_data: MarketDataProvider instance
+        semaphore: Asyncio semaphore to limit concurrent requests
+        
+    Returns:
+        Tuple of (ticker, financials_dict) or (ticker, None) on error
+    """
+    async with semaphore:
+        try:
+            # Run the synchronous API call in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            financials = await loop.run_in_executor(
+                None, 
+                partial(market_data.get_stock_financials, ticker)
+            )
+            return (ticker, financials)
+        except Exception as e:
+            logger.debug(f"Error fetching financials for {ticker}: {e}")
+            return (ticker, None)
+
+
+async def _batch_fetch_financials(
+    tickers: list[str],
+    market_data: MarketDataProvider,
+    max_concurrent: int = 10
+) -> list[tuple[str, Dict]]:
+    """
+    Fetch financials for multiple tickers concurrently with controlled concurrency.
+    
+    Args:
+        tickers: List of ticker symbols
+        market_data: MarketDataProvider instance
+        max_concurrent: Maximum number of concurrent API requests (default: 10)
+        
+    Returns:
+        List of (ticker, financials) tuples for successfully fetched data
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    # Create tasks for all tickers
+    tasks = [
+        _fetch_financials_async(ticker, market_data, semaphore)
+        for ticker in tickers
+    ]
+    
+    # Gather all results concurrently
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Filter out failed fetches and exceptions
+    successful_results = []
+    for result in results:
+        if isinstance(result, tuple) and result[1] is not None:
+            successful_results.append(result)
+        elif isinstance(result, Exception):
+            logger.debug(f"Exception during batch fetch: {result}")
+    
+    return successful_results
+
+
 @router.post(
     "/advanced",
     response_model=ScreenerResponse,
@@ -602,12 +672,23 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
 
         logger.info(f"Screening {len(tickers)} stocks from '{request.universe}' universe")
 
-        # Phase 1: Apply fundamental filters (Lynch criteria)
+        # Phase 1: Apply fundamental filters (Lynch criteria) with concurrent fetching
+        logger.info("Phase 1: Fetching financials concurrently...")
+        
+        # Fetch all financials concurrently with semaphore-limited concurrency
+        financials_results = await _batch_fetch_financials(
+            tickers, 
+            market_data, 
+            max_concurrent=10  # Limit to 10 concurrent API requests
+        )
+        
+        logger.info(f"Fetched financials for {len(financials_results)} out of {len(tickers)} stocks")
+        
+        # Apply fundamental filters
         fundamental_passed = []
-        for ticker in tickers:
+        for ticker, financials in financials_results:
             try:
-                financials = market_data.get_stock_financials(ticker)
-
+                # Skip if missing required fields
                 if not financials.get("peg_ratio") or not financials.get("eps_growth"):
                     continue
 
@@ -618,7 +699,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                 fundamental_passed.append((ticker, financials))
 
             except Exception as e:
-                logger.debug(f"Skipping {ticker}: {e}")
+                logger.debug(f"Error filtering {ticker}: {e}")
                 continue
 
         logger.info(f"Phase 1 complete: {len(fundamental_passed)} passed fundamental filters")
