@@ -10,6 +10,7 @@ import Navigation from './components/Navigation';
 import StockScreenerPage from './pages/StockScreenerPage';
 import OptionsPage from './pages/OptionsPage';
 import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
+import GannSquarePage from './pages/GannSquarePage';
 import { apiClient } from './config/api';
 import './App.css';
 
@@ -72,6 +73,7 @@ const App: React.FC = () => {
           <Route path="/screener" element={<StockScreenerPage />} />
           <Route path="/options" element={<OptionsPage />} />
           <Route path="/technical" element={<TechnicalAnalysisPage />} />
+          <Route path="/gann" element={<GannSquarePage />} />
         </Routes>
 
         <footer className="app-footer">

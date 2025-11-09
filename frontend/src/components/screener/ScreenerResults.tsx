@@ -6,7 +6,6 @@
  */
 
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ScreenerResponse, StockScreenerResult } from '../../types/screener';
 import './ScreenerResults.css';
 
@@ -25,13 +24,13 @@ const ScreenerResults: React.FC<ScreenerResultsProps> = ({
   pageSize,
   onPageChange,
 }) => {
-  const navigate = useNavigate();
 
   /**
-   * Handle ticker click - navigate to Technical Analysis page
+   * Handle ticker click - open Technical Analysis page in new tab
    */
   const handleTickerClick = (ticker: string) => {
-    navigate(`/technical?ticker=${ticker}`);
+    // Open in new tab to keep screener results visible
+    window.open(`/technical?ticker=${ticker}`, '_blank', 'noopener,noreferrer');
   };
 
   /**

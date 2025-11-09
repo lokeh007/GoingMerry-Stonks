@@ -5,7 +5,7 @@
  * Interactive filter controls for Peter Lynch screening criteria
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   AdvancedScreenerRequest,
   LynchCategory,

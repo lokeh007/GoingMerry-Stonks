@@ -35,6 +35,12 @@ const Navigation: React.FC = () => {
       >
         Technical Analysis
       </Link>
+      <Link
+        to="/gann"
+        className={`nav-link ${isActive('/gann') ? 'active' : ''}`}
+      >
+        Gann Square of 9
+      </Link>
     </nav>
   );
 };

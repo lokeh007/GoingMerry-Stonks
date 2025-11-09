@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../config/api';
 import './TechnicalAnalysisPage.css';
 import { PriceChart } from '../components/TechnicalAnalysis/PriceChart';
@@ -52,11 +53,16 @@ interface TechnicalData {
 type ChartType = 'line' | 'candlestick';
 
 const TechnicalAnalysisPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+
+  // Get ticker from URL parameter or default to 'AAPL'
+  const urlTicker = searchParams.get('ticker')?.toUpperCase() || 'AAPL';
+
   const [technicalData, setTechnicalData] = useState<TechnicalData | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [ticker, setTicker] = useState<string>('AAPL');
-  const [inputTicker, setInputTicker] = useState<string>('AAPL');
+  const [ticker, setTicker] = useState<string>(urlTicker);
+  const [inputTicker, setInputTicker] = useState<string>(urlTicker);
   const [period, setPeriod] = useState<string>('6mo');
   const [chartType, setChartType] = useState<ChartType>('line');
   const [selectedIndicators, setSelectedIndicators] = useState<string[]>([
@@ -124,10 +130,10 @@ const TechnicalAnalysisPage: React.FC = () => {
   };
 
   /**
-   * Load default data on mount
+   * Load data on mount with ticker from URL or default
    */
   useEffect(() => {
-    fetchTechnicalData('AAPL', period, selectedIndicators);
+    fetchTechnicalData(urlTicker, period, selectedIndicators);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

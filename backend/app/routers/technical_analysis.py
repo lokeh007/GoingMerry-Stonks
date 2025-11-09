@@ -15,6 +15,8 @@ from ..services.technical_analysis import (
     TechnicalAnalysisProvider,
     TechnicalAnalysisError,
 )
+from ..financial_models.gann import get_gann_calculator
+from ..services.yfinance_provider import YFinanceProvider
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -311,3 +313,150 @@ async def get_macd(
     except Exception:
         logger.exception(f"Unexpected error calculating MACD for {ticker}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get(
+    "/{ticker}/gann",
+    summary="Get Gann Square of 9 Levels",
+    description="Calculate Gann Square of 9 support and resistance levels for a ticker.",
+)
+async def get_gann_levels(
+    ticker: str = Path(
+        ...,
+        description="Stock ticker symbol",
+        min_length=1,
+        max_length=10,
+        pattern="^[A-Z]+$",
+    ),
+    reference_price: Optional[float] = Query(
+        None,
+        description="Reference price for calculations (default: 52-week low)",
+        gt=0,
+    ),
+    num_levels: int = Query(
+        5,
+        description="Number of support/resistance levels to calculate",
+        ge=1,
+        le=10,
+    ),
+):
+    """
+    Calculate Gann Square of 9 support and resistance levels.
+
+    W.D. Gann's Square of 9 is a mathematical technique for identifying
+    key support and resistance price levels based on angular relationships
+    in a spiral pattern.
+
+    **How it works:**
+    - Uses a spiral starting at 1 in the center
+    - Key angles (90°, 180°, 270°, 360°) represent important price levels
+    - Calculates both support (below current price) and resistance (above)
+
+    **Parameters:**
+    - **ticker**: Stock ticker symbol
+    - **reference_price**: Starting price for calculations (default: 52-week low)
+    - **num_levels**: Number of levels to calculate (default: 5)
+
+    **Returns:**
+    - Current price and reference price
+    - List of support levels (below current price)
+    - List of resistance levels (above current price)
+    - Nearest support and resistance
+    - Current position relative to levels
+
+    **Example Request:**
+    ```
+    GET /technical/AAPL/gann
+    GET /technical/NVDA/gann?num_levels=10
+    GET /technical/TSLA/gann?reference_price=150.00
+    ```
+
+    **Example Response:**
+    ```json
+    {
+      "ticker": "AAPL",
+      "current_price": 185.50,
+      "reference_price": 124.17,
+      "support_levels": [180.25, 175.80, 170.45],
+      "resistance_levels": [190.75, 195.20, 200.50],
+      "nearest_support": 180.25,
+      "nearest_resistance": 190.75,
+      "current_position": "between_levels",
+      "at_key_level": {
+        "at_support": false,
+        "at_resistance": false
+      }
+    }
+    ```
+    """
+    try:
+        logger.info(f"Received Gann Square of 9 request for {ticker}")
+
+        # Initialize providers
+        gann_calc = get_gann_calculator()
+        yf_provider = YFinanceProvider()
+
+        # Get current price and 52-week low
+        fundamentals = yf_provider.get_fundamentals(ticker.upper())
+        current_price = fundamentals.get("current_price")
+        week_52_low = fundamentals.get("week_52_low")
+
+        if not current_price:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Could not fetch current price for {ticker}"
+            )
+
+        # Use provided reference price or default to 52-week low
+        ref_price = reference_price if reference_price else (week_52_low or current_price)
+
+        logger.info(
+            f"Calculating Gann levels for {ticker}: "
+            f"current={current_price:.2f}, reference={ref_price:.2f}"
+        )
+
+        # Calculate Gann levels
+        gann_levels = gann_calc.calculate_gann_levels(
+            current_price=current_price,
+            reference_price=ref_price,
+            num_levels=num_levels,
+        )
+
+        # Check if at key level
+        key_level_check = gann_calc.is_at_key_level(
+            current_price=current_price,
+            reference_price=ref_price,
+        )
+
+        result = {
+            "ticker": ticker.upper(),
+            "current_price": current_price,
+            "reference_price": ref_price,
+            "week_52_low": week_52_low,
+            "week_52_high": fundamentals.get("week_52_high"),
+            "support_levels": gann_levels["support_levels"],
+            "resistance_levels": gann_levels["resistance_levels"],
+            "nearest_support": gann_levels["nearest_support"],
+            "nearest_resistance": gann_levels["nearest_resistance"],
+            "current_position": gann_levels["current_position"],
+            "at_key_level": key_level_check,
+            "num_levels_calculated": num_levels,
+        }
+
+        logger.info(
+            f"Successfully calculated Gann levels for {ticker}: "
+            f"support={gann_levels['nearest_support']}, "
+            f"resistance={gann_levels['nearest_resistance']}"
+        )
+
+        return JSONResponse(content=result)
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.exception(f"Unexpected error calculating Gann levels for {ticker}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to calculate Gann levels: {str(e)}"
+        )

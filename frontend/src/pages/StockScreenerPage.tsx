@@ -20,6 +20,22 @@ import {
 import { runAdvancedScreener, parseScreenerURLParams, buildScreenerURLParams } from '../utils/screenerApi';
 import './StockScreenerPage.css';
 
+// Category descriptions for each Lynch category
+const CATEGORY_DESCRIPTIONS: Record<LynchCategory, string> = {
+  [LynchCategory.FAST_GROWERS]:
+    "🚀 Fast Growers are small, aggressive companies growing at 20-25% annually. Lynch's most profitable category with potential for 'tenbaggers' but requires careful monitoring of growth sustainability.",
+  [LynchCategory.STALWARTS]:
+    "🏢 Stalwarts are large, established companies (Coca-Cola, P&G) growing 10-12% annually. Solid defensive holdings that provide steady 30-50% returns over years with low risk.",
+  [LynchCategory.SLOW_GROWERS]:
+    "🐌 Slow Growers are large, mature companies with single-digit growth. Typically offer dividends but limited price appreciation. Lynch avoided these unless deeply undervalued.",
+  [LynchCategory.CYCLICALS]:
+    "🔄 Cyclicals are companies whose fortunes rise and fall with economic cycles (autos, airlines, steel). Profitable when bought at the bottom of the cycle and sold at the top.",
+  [LynchCategory.TURNAROUNDS]:
+    "📈 Turnarounds are companies recovering from setbacks with improving fundamentals. Can produce impressive gains when the turnaround succeeds, but carry bankruptcy risk if it fails.",
+  [LynchCategory.ASSET_PLAYS]:
+    "💎 Asset Plays are companies with valuable hidden assets (real estate, patents, resources) not reflected in stock price. Success depends on assets being unlocked or recognized by market.",
+};
+
 const StockScreenerPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -122,6 +138,11 @@ const StockScreenerPage: React.FC = () => {
           onReset={handleResetFilters}
           loading={loading}
         />
+
+        {/* Category Description */}
+        <div className="category-description">
+          {CATEGORY_DESCRIPTIONS[request.lynch_category]}
+        </div>
       </div>
 
       {/* Action Buttons */}

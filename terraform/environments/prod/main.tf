@@ -1,5 +1,5 @@
 # Production Environment Configuration
-# Architecture: Cloud Run (Backend) + Firebase Hosting (Frontend) + Cloud SQL (Database)
+# Architecture: Cloud Run (Backend) + Firebase Hosting (Frontend) + Firestore (Database)
 
 terraform {
   required_version = ">= 1.5.0"
@@ -39,10 +39,9 @@ resource "google_project_service" "required_apis" {
     "artifactregistry.googleapis.com", # Artifact Registry
     "secretmanager.googleapis.com",    # Secret Manager
     "cloudbuild.googleapis.com",       # Cloud Build
-    "sqladmin.googleapis.com",         # Cloud SQL
-    "servicenetworking.googleapis.com", # VPC Peering for Cloud SQL
     "firebase.googleapis.com",         # Firebase
     "firebasehosting.googleapis.com",  # Firebase Hosting
+    "firestore.googleapis.com",        # Cloud Firestore
     "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
@@ -57,50 +56,6 @@ resource "google_project_service" "required_apis" {
 # Data source for project
 data "google_project" "project" {
   project_id = var.project_id
-}
-
-# VPC Network for Cloud SQL private IP (optional but recommended)
-resource "google_compute_network" "vpc" {
-  count                   = var.enable_private_ip ? 1 : 0
-  name                    = "${var.environment}-vpc"
-  project                 = var.project_id
-  auto_create_subnetworks = true
-
-  depends_on = [google_project_service.required_apis]
-}
-
-# VPC Peering for Cloud SQL
-resource "google_compute_global_address" "private_ip_address" {
-  count         = var.enable_private_ip ? 1 : 0
-  name          = "${var.environment}-private-ip"
-  project       = var.project_id
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 16
-  network       = google_compute_network.vpc[0].id
-
-  depends_on = [google_project_service.required_apis]
-}
-
-resource "google_service_networking_connection" "private_vpc_connection" {
-  count                   = var.enable_private_ip ? 1 : 0
-  network                 = google_compute_network.vpc[0].id
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_address[0].name]
-
-  depends_on = [google_project_service.required_apis]
-}
-
-# Serverless VPC connector for Cloud Run to access Cloud SQL
-resource "google_vpc_access_connector" "connector" {
-  count         = var.enable_private_ip ? 1 : 0
-  name          = "${var.environment}-vpc-connector"
-  project       = var.project_id
-  region        = var.region
-  network       = google_compute_network.vpc[0].name
-  ip_cidr_range = "10.8.0.0/28"
-
-  depends_on = [google_project_service.required_apis]
 }
 
 # Backend module
@@ -124,13 +79,12 @@ module "backend" {
   allow_public_access           = false
   load_balancer_service_account = ""
 
-  # VPC connector for Cloud SQL access
-  vpc_connector_name = var.enable_private_ip ? google_vpc_access_connector.connector[0].id : ""
+  # No VPC connector needed
+  vpc_connector_name = ""
 
   depends_on = [
     google_project_service.required_apis,
-    module.secrets,
-    module.database
+    module.secrets
   ]
 }
 
@@ -155,50 +109,26 @@ resource "google_secret_manager_secret_iam_member" "backend_polygon_access" {
   depends_on = [module.secrets, module.backend]
 }
 
-# Database module
-module "database" {
-  source = "../../modules/database"
+# Firestore Database
+resource "google_firestore_database" "main" {
+  project     = var.project_id
+  name        = "(default)"
+  location_id = var.region
+  type        = "FIRESTORE_NATIVE"
 
-  project_id       = var.project_id
-  region           = var.region
-  environment      = var.environment
-  application_name = var.application_name
+  # Enable delete protection in production
+  delete_protection_state = var.environment == "prod" ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
 
-  database_version = var.database_version
-  database_tier    = var.database_tier
-  database_name    = var.database_name
-  database_user    = var.database_user
-
-  disk_size_gb                 = var.database_disk_size_gb
-  max_disk_size_gb             = var.database_max_disk_size_gb
-  high_availability            = var.database_high_availability
-  enable_point_in_time_recovery = var.database_enable_pitr
-  max_connections              = var.database_max_connections
-
-  vpc_network_id                = var.enable_private_ip ? google_compute_network.vpc[0].id : ""
-  authorized_networks           = var.database_authorized_networks
-
-  depends_on = [
-    google_project_service.required_apis,
-    google_service_networking_connection.private_vpc_connection
-  ]
+  depends_on = [google_project_service.required_apis]
 }
 
-# Grant backend service account access to database secrets
-resource "google_secret_manager_secret_iam_member" "backend_db_password_access" {
-  secret_id = module.database.db_password_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${module.backend.service_account_email}"
+# Grant backend service account Firestore access
+resource "google_project_iam_member" "backend_firestore_user" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${module.backend.service_account_email}"
 
-  depends_on = [module.database, module.backend]
-}
-
-resource "google_secret_manager_secret_iam_member" "backend_db_url_access" {
-  secret_id = module.database.database_url_secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${module.backend.service_account_email}"
-
-  depends_on = [module.database, module.backend]
+  depends_on = [module.backend, google_firestore_database.main]
 }
 
 # Networking module (Load Balancer for Backend API and Frontend)
@@ -300,32 +230,3 @@ resource "google_monitoring_alert_policy" "high_latency" {
   }
 }
 
-# Alert: Database high connections
-resource "google_monitoring_alert_policy" "db_high_connections" {
-  count        = var.enable_monitoring ? 1 : 0
-  display_name = "${var.environment} - Database High Connections"
-  project      = var.project_id
-  combiner     = "OR"
-
-  conditions {
-    display_name = "Active connections > 80%"
-
-    condition_threshold {
-      filter          = "resource.type = \"cloudsql_database\" AND metric.type = \"cloudsql.googleapis.com/database/postgresql/num_backends\""
-      duration        = "300s"
-      comparison      = "COMPARISON_GT"
-      threshold_value = tonumber(var.database_max_connections) * 0.8
-
-      aggregations {
-        alignment_period   = "60s"
-        per_series_aligner = "ALIGN_MEAN"
-      }
-    }
-  }
-
-  notification_channels = var.alert_email != "" ? [google_monitoring_notification_channel.email[0].id] : []
-
-  alert_strategy {
-    auto_close = "86400s"
-  }
-}
