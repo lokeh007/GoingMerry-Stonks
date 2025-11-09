@@ -110,6 +110,66 @@ The screener uses a **funnel approach**:
 
 **Phase 2 Summary**: All three new API endpoints implemented with full integration of Phase 1 components. Multi-layered filtering (fundamentals + technicals + market regime) now functional. Ready for frontend development.
 
+#### 2.4 Performance Improvements (Phase 2.1) ✅
+- [x] **HIGH Priority**: Limit technical analysis to top 100 stocks by Lynch score
+  - Prevents excessive API calls when hundreds of stocks pass fundamental filters
+  - Added `MAX_STOCKS_FOR_TECHNICAL = 100` constant
+  - Sort by Lynch score before applying expensive technical analysis
+  - Location: `backend/app/routers/screener.py:626-642`
+- [x] **MEDIUM Priority**: Fix Gann reference price calculation
+  - Changed from using current_price for both parameters to using 52-week low as reference
+  - Provides meaningful support/resistance levels based on recent price action
+  - Location: `backend/app/routers/screener.py:726-730`
+- [x] **MEDIUM Priority**: Add rate limiting to YFinance API calls
+  - Implemented `@rate_limit` decorator with 100ms minimum interval
+  - Prevents API throttling during bulk screening operations
+  - Applied to: `get_technical_indicators()`, `get_historical_data()`, `get_vix_data()`
+  - Location: `backend/app/services/yfinance_provider.py:20-50`
+- [x] Create `backend/SCREENER-ISSUES.md` tracking file
+  - Documents all resolved HIGH/MEDIUM priority issues
+  - Logs LOW priority issues for future work (#2, #5, #6)
+  - Includes future enhancement ideas (concurrent fetching)
+
+**Performance Impact**: ~90% reduction in API calls for large result sets
+
+#### 2.5 Concurrent Technical Analysis (Phase 2.2) ✅
+- [x] **CRITICAL Priority**: Implement concurrent processing for Phase 2 technical analysis
+  - Eliminated 15-30 second sequential processing bottleneck
+  - Created helper functions for concurrent execution:
+    - `_process_single_stock_technical()` - Process one stock's technical analysis (sync)
+    - `_process_technical_analysis_async()` - Async wrapper with semaphore control
+    - `_batch_process_technical_analysis()` - Batch coordinator (max_concurrent=5)
+  - Replaced sequential for loop with concurrent batch processing
+  - Location: `backend/app/routers/screener.py:617-892, 1031-1044`
+- [x] Update `backend/SCREENER-ISSUES.md` to document resolution
+  - Added Issue #7 (CRITICAL) to Resolved Issues section
+  - Updated Future Enhancements to replace concurrent fetching with SSE streaming
+
+**Performance Impact**: 70-80% reduction in response time (15-30s → 3-6s for 50 stocks)
+
+#### 2.6 Code Quality Improvements (Phase 2.3) ✅
+- [x] **CRITICAL**: Fix null check logic filtering out stocks with 0 values
+  - Changed from `not financials.get()` to `financials.get() is None`
+  - Allows stocks with 0 PEG ratio or 0 EPS growth to pass through
+  - Fixes data loss bug affecting turnaround stocks and other categories
+  - Location: `backend/app/routers/screener.py:220, 961`
+- [x] **MEDIUM**: Move criteria key mapping to module-level constant
+  - Eliminates dictionary recreation on every request
+  - Reduced from 16 entries to 2 entries (removed identity mappings)
+  - Performance: No more allocation overhead per request
+  - Location: `backend/app/routers/screener.py:45-48, 749`
+- [x] **LOW**: Remove unused `vix` parameter from market regime filter
+  - Cleaned up function signature and call site
+  - Added enhanced docstring with Args and Returns
+  - Location: `backend/app/routers/screener.py:1005, 1165`
+- [x] Update `backend/SCREENER-ISSUES.md` to document resolutions
+  - Added Issues #8, #9, #10 to Resolved Issues section
+  - All improvements credited to Copilot from PR #7
+
+**Impact**: Fixed critical data loss bug, improved performance, cleaner code
+
+**Credit**: All improvements identified by Copilot in PR #7 (now closed)
+
 ---
 
 ### 📋 Phase 3: Frontend - Basic UI

@@ -6,13 +6,48 @@ Used for 15-minute delayed data that complements the Polygon.io real-time feed.
 """
 
 import logging
+import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
+from functools import wraps
 import yfinance as yf
 import pandas as pd
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+
+def rate_limit(min_interval: float = 0.1):
+    """
+    Decorator to rate limit API calls.
+
+    Ensures minimum time interval between calls to prevent API throttling.
+
+    Args:
+        min_interval: Minimum seconds between calls (default: 0.1 = 100ms)
+    """
+    last_called = {}
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            func_name = func.__name__
+            now = time.time()
+
+            if func_name in last_called:
+                elapsed = now - last_called[func_name]
+                if elapsed < min_interval:
+                    sleep_time = min_interval - elapsed
+                    logger.debug(f"Rate limiting: sleeping {sleep_time:.3f}s before {func_name}")
+                    time.sleep(sleep_time)
+
+            result = func(*args, **kwargs)
+            last_called[func_name] = time.time()
+            return result
+
+        return wrapper
+
+    return decorator
 
 
 class YFinanceProvider:
@@ -34,6 +69,7 @@ class YFinanceProvider:
         self.cache_ttl = timedelta(minutes=15)  # Match data delay
         logger.info("YFinanceProvider initialized")
 
+    @rate_limit(min_interval=0.1)
     def get_technical_indicators(
         self, ticker: str, period: str = "6mo"
     ) -> Dict[str, Any]:
@@ -112,6 +148,7 @@ class YFinanceProvider:
             logger.error(f"Error fetching indicators for {ticker}: {e}")
             raise ValueError(f"Failed to fetch indicators for {ticker}: {str(e)}")
 
+    @rate_limit(min_interval=0.1)
     def get_historical_data(
         self, ticker: str, period: str = "6mo", interval: str = "1d"
     ) -> pd.DataFrame:
@@ -154,6 +191,7 @@ class YFinanceProvider:
             logger.error(f"Error fetching historical data for {ticker}: {e}")
             raise ValueError(f"Failed to fetch historical data for {ticker}: {str(e)}")
 
+    @rate_limit(min_interval=0.2)
     def get_vix_data(self) -> Dict[str, Any]:
         """
         Fetch VIX (Volatility Index) data.
