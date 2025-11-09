@@ -200,7 +200,8 @@ async def get_lynch_fast_growers(
             "universe": universe,
         }
 
-        # Initialize market data provider
+        # Initialize yfinance provider
+        yf_provider = YFinanceProvider()
         market_data = MarketDataProvider()
 
         # Get stock universe to screen
@@ -213,8 +214,8 @@ async def get_lynch_fast_growers(
 
         for ticker in tickers:
             try:
-                # Fetch fundamental data
-                financials = market_data.get_stock_financials(ticker)
+                # Fetch fundamental data from yfinance
+                financials = yf_provider.get_fundamentals(ticker)
 
                 # Skip if essential data is missing (use 'is None' to allow 0 values)
                 if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:
@@ -225,7 +226,7 @@ async def get_lynch_fast_growers(
                 peg_ratio = financials["peg_ratio"] or float("inf")
                 eps_growth = financials["eps_growth"] or 0
                 debt_to_equity = financials["debt_to_equity"] or 0
-                current_ratio = financials["current_ratio"] or 0
+                current_ratio = financials.get("current_ratio") or 0
                 market_cap = financials["market_cap"] or 0
 
                 # Check all criteria
@@ -238,14 +239,9 @@ async def get_lynch_fast_growers(
                 )
 
                 if passes_screen:
-                    # Get ticker details for company name and sector
-                    try:
-                        details = market_data.get_ticker_details(ticker)
-                        company_name = details.get("name", ticker)
-                        sector = details.get("sector", "")
-                    except Exception:
-                        company_name = ticker
-                        sector = ""
+                    # Get company name and sector from yfinance data
+                    company_name = financials.get("company_name", ticker)
+                    sector = financials.get("sector", "")
 
                     # Calculate score (0-100)
                     score = _calculate_lynch_score(financials)
@@ -259,10 +255,10 @@ async def get_lynch_fast_growers(
                         company_name=company_name,
                         sector=sector,
                         market_cap=market_cap,
-                        price=financials.get("price"),
-                        pe_ratio=financials.get("pe_ratio"),
+                        price=financials.get("current_price"),  # yfinance uses 'current_price'
+                        pe_ratio=financials.get("pe_ratio"),  # Not provided by yfinance
                         peg_ratio=peg_ratio,
-                        revenue_growth=financials.get("revenue_growth"),
+                        revenue_growth=financials.get("revenue_growth"),  # Not provided by yfinance
                         earnings_growth=eps_growth,
                         debt_to_equity=debt_to_equity,
                         current_ratio=current_ratio,
@@ -555,18 +551,18 @@ async def get_vix_data():
 
 
 async def _fetch_financials_async(
-    ticker: str, 
-    market_data: MarketDataProvider, 
+    ticker: str,
+    yf_provider: YFinanceProvider,
     semaphore: asyncio.Semaphore
 ) -> tuple[str, Optional[Dict]]:
     """
     Asynchronously fetch financials for a single ticker with semaphore control.
-    
+
     Args:
         ticker: Stock ticker symbol
-        market_data: MarketDataProvider instance
+        yf_provider: YFinanceProvider instance
         semaphore: Asyncio semaphore to limit concurrent requests
-        
+
     Returns:
         Tuple of (ticker, financials_dict) or (ticker, None) on error
     """
@@ -575,8 +571,8 @@ async def _fetch_financials_async(
             # Run the synchronous API call in a thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             financials = await loop.run_in_executor(
-                None, 
-                partial(market_data.get_stock_financials, ticker)
+                None,
+                partial(yf_provider.get_fundamentals, ticker)
             )
             return (ticker, financials)
         except Exception as e:
@@ -586,31 +582,31 @@ async def _fetch_financials_async(
 
 async def _batch_fetch_financials(
     tickers: list[str],
-    market_data: MarketDataProvider,
+    yf_provider: YFinanceProvider,
     max_concurrent: int = 10
 ) -> list[tuple[str, Dict]]:
     """
     Fetch financials for multiple tickers concurrently with controlled concurrency.
-    
+
     Args:
         tickers: List of ticker symbols
-        market_data: MarketDataProvider instance
+        yf_provider: YFinanceProvider instance
         max_concurrent: Maximum number of concurrent API requests (default: 10)
-        
+
     Returns:
         List of (ticker, financials) tuples for successfully fetched data
     """
     semaphore = asyncio.Semaphore(max_concurrent)
-    
+
     # Create tasks for all tickers
     tasks = [
-        _fetch_financials_async(ticker, market_data, semaphore)
+        _fetch_financials_async(ticker, yf_provider, semaphore)
         for ticker in tickers
     ]
-    
+
     # Gather all results concurrently
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     # Filter out failed fetches and exceptions
     successful_results = []
     for result in results:
@@ -618,7 +614,7 @@ async def _batch_fetch_financials(
             successful_results.append(result)
         elif isinstance(result, Exception):
             logger.debug(f"Exception during batch fetch: {result}")
-    
+
     return successful_results
 
 
@@ -942,12 +938,12 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         logger.info(f"Screening {len(tickers)} stocks from '{request.universe}' universe")
 
         # Phase 1: Apply fundamental filters (Lynch criteria) with concurrent fetching
-        logger.info("Phase 1: Fetching financials concurrently...")
-        
+        logger.info("Phase 1: Fetching financials concurrently from yfinance...")
+
         # Fetch all financials concurrently with semaphore-limited concurrency
         financials_results = await _batch_fetch_financials(
-            tickers, 
-            market_data, 
+            tickers,
+            yf_provider,
             max_concurrent=10  # Limit to 10 concurrent API requests
         )
         

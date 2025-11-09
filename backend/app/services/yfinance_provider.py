@@ -191,6 +191,153 @@ class YFinanceProvider:
             logger.error(f"Error fetching historical data for {ticker}: {e}")
             raise ValueError(f"Failed to fetch historical data for {ticker}: {str(e)}")
 
+    @rate_limit(min_interval=0.1)
+    def get_fundamentals(self, ticker: str) -> Dict[str, Any]:
+        """
+        Fetch fundamental data for a stock using yfinance.
+
+        This method fetches fundamental metrics needed for Lynch screening:
+        - PEG ratio
+        - EPS growth rate
+        - Debt-to-equity ratio
+        - Return on equity (ROE)
+        - Institutional ownership
+        - Market cap
+        - Company name and sector
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict containing fundamental metrics
+
+        Raises:
+            ValueError: If ticker is invalid or data unavailable
+
+        Note:
+            Some fields may be None if not available for the ticker.
+            This is normal - caller should handle missing data gracefully.
+        """
+        try:
+            cache_key = f"{ticker}_fundamentals"
+            if self._is_cached(cache_key):
+                logger.info(f"Returning cached fundamentals for {ticker}")
+                return self.cache[cache_key]["data"]
+
+            logger.info(f"Fetching fundamentals for {ticker}")
+
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
+            # Extract fundamental data with safe defaults
+            fundamentals = {
+                "ticker": ticker.upper(),
+                "company_name": info.get("longName") or info.get("shortName", ticker),
+                "sector": info.get("sector"),
+                "market_cap": info.get("marketCap"),
+                "peg_ratio": info.get("pegRatio") or info.get("trailingPegRatio"),
+                "eps_growth": self._calculate_eps_growth(stock),
+                "debt_to_equity": info.get("debtToEquity"),
+                "roe": info.get("returnOnEquity"),
+                "institutional_ownership": info.get("heldPercentInstitutions"),
+                "current_ratio": info.get("currentRatio"),
+                "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Convert percentages (yfinance returns as decimals 0.0-1.0 or already as percentages)
+            if fundamentals["roe"] is not None:
+                fundamentals["roe"] = fundamentals["roe"] * 100  # Convert to percentage
+
+            if fundamentals["institutional_ownership"] is not None:
+                fundamentals["institutional_ownership"] = (
+                    fundamentals["institutional_ownership"] * 100
+                )  # Convert to percentage
+
+            if fundamentals["debt_to_equity"] is not None:
+                # yfinance returns D/E as percentage (152.411 = 152.411%)
+                # Convert to ratio for screening (152.411 → 1.52)
+                fundamentals["debt_to_equity"] = fundamentals["debt_to_equity"] / 100
+
+            # Cache the results
+            self._cache_data(cache_key, fundamentals)
+
+            # Log summary
+            available_metrics = sum(
+                1 for k, v in fundamentals.items() if v is not None and k != "timestamp"
+            )
+            logger.info(
+                f"Fetched fundamentals for {ticker}: {available_metrics}/9 metrics available "
+                f"(PEG={fundamentals['peg_ratio']}, EPS Growth={fundamentals['eps_growth']}%, "
+                f"D/E={fundamentals['debt_to_equity']}, ROE={fundamentals['roe']}%)"
+            )
+
+            return fundamentals
+
+        except Exception as e:
+            logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+            raise ValueError(f"Failed to fetch fundamentals for {ticker}: {str(e)}")
+
+    def _calculate_eps_growth(self, stock: yf.Ticker) -> Optional[float]:
+        """
+        Calculate EPS growth rate from earnings history.
+
+        Uses yfinance's financials/income_stmt data to calculate growth.
+        Attempts to calculate year-over-year growth using available data:
+        1. Try quarterly financials (trailing 4 quarters vs previous 4 quarters)
+        2. Try annual financials (most recent year vs previous year)
+        3. Return None if insufficient data
+
+        Args:
+            stock: yfinance Ticker object
+
+        Returns:
+            EPS growth rate as percentage, or None if unavailable
+        """
+        try:
+            # Try quarterly financials first
+            quarterly_financials = stock.quarterly_financials
+            if quarterly_financials is not None and not quarterly_financials.empty:
+                # Look for "Basic EPS" or "Diluted EPS" in the quarterly financials
+                eps_rows = [row for row in quarterly_financials.index if 'EPS' in str(row)]
+
+                if eps_rows and len(quarterly_financials.columns) >= 8:
+                    eps_row = eps_rows[0]  # Use first EPS metric found
+                    eps_values = quarterly_financials.loc[eps_row]
+
+                    # Compare trailing 4 quarters to previous 4 quarters
+                    recent_eps = eps_values.iloc[:4].sum()
+                    previous_eps = eps_values.iloc[4:8].sum()
+
+                    if previous_eps != 0 and not pd.isna(previous_eps):
+                        growth_rate = ((recent_eps - previous_eps) / abs(previous_eps)) * 100
+                        return round(growth_rate, 2)
+
+            # Try annual financials as fallback
+            annual_financials = stock.financials
+            if annual_financials is not None and not annual_financials.empty:
+                # Look for "Basic EPS" or "Diluted EPS" in the annual financials
+                eps_rows = [row for row in annual_financials.index if 'EPS' in str(row)]
+
+                if eps_rows and len(annual_financials.columns) >= 2:
+                    eps_row = eps_rows[0]  # Use first EPS metric found
+                    eps_values = annual_financials.loc[eps_row]
+
+                    recent_eps = eps_values.iloc[0]
+                    previous_eps = eps_values.iloc[1]
+
+                    if previous_eps != 0 and not pd.isna(previous_eps):
+                        growth_rate = ((recent_eps - previous_eps) / abs(previous_eps)) * 100
+                        return round(growth_rate, 2)
+
+            # Insufficient data - not a critical error, just return None
+            logger.debug(f"Insufficient earnings history to calculate EPS growth")
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error calculating EPS growth: {e}")
+            return None
+
     @rate_limit(min_interval=0.2)
     def get_vix_data(self) -> Dict[str, Any]:
         """
