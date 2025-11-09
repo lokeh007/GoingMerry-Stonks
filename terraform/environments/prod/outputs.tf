@@ -1,5 +1,5 @@
 # Production Environment Outputs
-# Architecture: Cloud Run (Backend) + Firebase Hosting (Frontend) + Cloud SQL (Database)
+# Architecture: Cloud Run (Backend) + Firebase Hosting (Frontend) + Firestore (Database)
 
 # ========================================
 # Backend API Outputs
@@ -31,28 +31,17 @@ output "api_url" {
 }
 
 # ========================================
-# Database Outputs
+# Database Outputs (Firestore)
 # ========================================
 
-output "database_instance_name" {
-  description = "Name of the Cloud SQL PostgreSQL instance"
-  value       = module.database.instance_name
+output "firestore_database_name" {
+  description = "Name of the Firestore database"
+  value       = google_firestore_database.main.name
 }
 
-output "database_connection_name" {
-  description = "Connection name for Cloud SQL Proxy"
-  value       = module.database.instance_connection_name
-}
-
-output "database_private_ip" {
-  description = "Private IP address of the database"
-  value       = module.database.private_ip_address
-}
-
-output "database_url_secret" {
-  description = "Secret Manager secret name containing database URL"
-  value       = module.database.database_url_secret_name
-  sensitive   = true
+output "firestore_location" {
+  description = "Firestore database location"
+  value       = google_firestore_database.main.location_id
 }
 
 # ========================================
@@ -78,10 +67,6 @@ output "load_balancer_ip" {
   value       = module.networking.backend_load_balancer_ip
 }
 
-output "vpc_connector_id" {
-  description = "VPC connector ID for Cloud Run to Cloud SQL"
-  value       = var.enable_private_ip ? google_vpc_access_connector.connector[0].id : null
-}
 
 # ========================================
 # Deployment Instructions
@@ -106,12 +91,11 @@ output "deployment_instructions" {
   API URL:           ${module.networking.api_url}
   ${var.api_domain != "" ? "Custom Domain:    ${var.api_domain} (configure DNS A record)" : ""}
 
-  DATABASE:
-  ---------
-  Instance:          ${module.database.instance_name}
-  Database Name:     ${var.database_name}
-  Connection Name:   ${module.database.instance_connection_name}
-  Private IP:        ${module.database.private_ip_address}
+  DATABASE (FIRESTORE):
+  ---------------------
+  Database Name:     ${google_firestore_database.main.name}
+  Location:          ${google_firestore_database.main.location_id}
+  Type:              Firestore Native
 
   FRONTEND:
   ---------
@@ -164,19 +148,21 @@ output "deployment_instructions" {
      # Test frontend
      open https://${var.project_id}.web.app
 
-  6. Database Connection from Backend:
+  6. Firestore Access from Backend:
      -------------------------
-     The backend connects to database via Cloud SQL Proxy over private IP.
-     Connection string is stored in Secret Manager.
+     Backend service account has 'roles/datastore.user' permissions.
+     Access Firestore via Google Cloud Console or Firebase CLI:
 
-     To access database directly (for migrations):
-     cloud_sql_proxy -instances=${module.database.instance_connection_name}=tcp:5432
+     # View data in Firebase Console
+     https://console.firebase.google.com/project/${var.project_id}/firestore
+
+     # Or use gcloud CLI
+     gcloud firestore databases list --project=${var.project_id}
 
   7. Monitor Services:
      -------------------------
      Cloud Run:    https://console.cloud.google.com/run?project=${var.project_id}
-     Cloud SQL:    https://console.cloud.google.com/sql/instances?project=${var.project_id}
-     Firebase:     https://console.firebase.google.com/project/${var.project_id}
+     Firestore:    https://console.firebase.google.com/project/${var.project_id}/firestore
      Logs:         https://console.cloud.google.com/logs?project=${var.project_id}
      Monitoring:   https://console.cloud.google.com/monitoring?project=${var.project_id}
 
@@ -184,12 +170,12 @@ output "deployment_instructions" {
   IMPORTANT SECURITY NOTES:
   ========================================
 
-  1. Database credentials are stored in Secret Manager
-  2. Backend uses Cloud SQL Proxy for secure database access
+  1. Firestore has built-in authentication and security rules
+  2. Backend service account uses IAM for secure Firestore access
   3. API is protected by Cloud Armor (if enabled)
   4. SSL certificates auto-renew
-  5. Regular backups are enabled (30-day retention)
-  6. Point-in-time recovery is enabled (7-day window)
+  5. Firestore data is automatically backed up by Google
+  6. Delete protection enabled for production database
 
   ========================================
   EOT
