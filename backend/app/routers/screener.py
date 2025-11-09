@@ -7,7 +7,7 @@ including the 'Alpha Engine' module for identifying investment opportunities.
 
 from datetime import datetime
 import logging
-from typing import Optional
+from typing import Optional, Dict
 import asyncio
 from functools import partial
 
@@ -614,6 +614,284 @@ async def _batch_fetch_financials(
     return successful_results
 
 
+def _process_single_stock_technical(
+    ticker: str,
+    financials: dict,
+    request: AdvancedScreenerRequest,
+    yf_provider: YFinanceProvider,
+    gann_calc,
+    pattern_detector,
+    market_data: MarketDataProvider,
+) -> Optional[StockScreenerResult]:
+    """
+    Process technical analysis for a single stock (synchronous).
+
+    This is a helper function that performs all technical analysis steps for one stock.
+    It's designed to be called from a thread pool for concurrent processing.
+
+    Args:
+        ticker: Stock ticker symbol
+        financials: Financial data dict from Phase 1
+        request: Advanced screener request with all filters
+        yf_provider: YFinanceProvider instance
+        gann_calc: Gann calculator instance
+        pattern_detector: Pattern detector instance
+        market_data: MarketDataProvider instance
+
+    Returns:
+        StockScreenerResult if all filters pass, None otherwise
+    """
+    try:
+        tech_indicators = None
+        pattern = None
+        gann = None
+
+        apply_technical = _should_apply_technical_filters(request.technical_filters)
+
+        if apply_technical:
+            try:
+                # Get technical indicators
+                indicators = yf_provider.get_technical_indicators(ticker, period="3mo")
+
+                # Apply RSI filter
+                if request.technical_filters.rsi_condition != RSICondition.ANY:
+                    if not _passes_rsi_filter(indicators, request.technical_filters.rsi_condition):
+                        return None
+
+                # Apply MACD filter
+                if request.technical_filters.macd_condition != MACDCondition.ANY:
+                    if not _passes_macd_filter(indicators, request.technical_filters.macd_condition):
+                        return None
+
+                # Build technical indicators model
+                tech_indicators = TechnicalIndicators(
+                    rsi_current=indicators["rsi"]["current"],
+                    rsi_oversold=indicators["rsi"]["oversold"],
+                    rsi_overbought=indicators["rsi"]["overbought"],
+                    macd_bullish_crossover=indicators["macd"]["bullish_crossover"],
+                    macd_bearish_crossover=indicators["macd"]["bearish_crossover"],
+                )
+
+                # Pattern detection
+                if request.technical_filters.pattern != BulkowskiPattern.ANY:
+                    hist_data = yf_provider.get_historical_data(ticker, period="6mo")
+
+                    # Mapping from BulkowskiPattern to detection methods
+                    pattern_detection_map = {
+                        BulkowskiPattern.PIPE_BOTTOM: pattern_detector.detect_pipe_bottom,
+                        BulkowskiPattern.DOUBLE_BOTTOM: pattern_detector.detect_double_bottom,
+                    }
+
+                    detect_func = pattern_detection_map.get(request.technical_filters.pattern)
+                    if detect_func is not None:
+                        pattern_result = detect_func(hist_data)
+                    else:
+                        pattern_result = {"detected": False}
+
+                    if not pattern_result["detected"]:
+                        return None
+
+                    pattern = PatternDetection(**pattern_result)
+
+                # Gann level detection
+                if request.technical_filters.gann_location != GannLocation.ANY:
+                    current_price = financials.get("price", 0)
+                    if current_price:
+                        # Use 52-week low as reference for support/resistance calculation
+                        reference_price = financials.get("52_week_low", current_price)
+                        gann_levels = gann_calc.calculate_gann_levels(current_price, reference_price)
+                        at_level = gann_calc.is_at_key_level(current_price, reference_price)
+
+                        if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
+                            if not at_level["at_support"]:
+                                return None
+                        elif request.technical_filters.gann_location == GannLocation.AT_RESISTANCE:
+                            if not at_level["at_resistance"]:
+                                return None
+
+                        gann = GannLevels(
+                            nearest_support=gann_levels["nearest_support"],
+                            nearest_resistance=gann_levels["nearest_resistance"],
+                            at_support=at_level["at_support"],
+                            at_resistance=at_level["at_resistance"],
+                            position=gann_levels["current_position"],
+                        )
+
+            except Exception as e:
+                logger.debug(f"Technical analysis failed for {ticker}: {e}")
+                return None
+
+        # Get ticker details
+        try:
+            details = market_data.get_ticker_details(ticker)
+            company_name = details.get("name", ticker)
+            sector = details.get("sector", "")
+        except Exception:
+            company_name = ticker
+            sector = ""
+
+        # Calculate score
+        score = _calculate_lynch_score(financials)
+
+        # Generate reasons
+        _criteria_key_map = {
+            "min_eps_growth": "min_earnings_growth",
+            "max_eps_growth": "max_earnings_growth",
+            "min_peg_ratio": "min_peg_ratio",
+            "max_peg_ratio": "max_peg_ratio",
+            "min_pe_ratio": "min_pe_ratio",
+            "max_pe_ratio": "max_pe_ratio",
+            "min_revenue_growth": "min_revenue_growth",
+            "max_revenue_growth": "max_revenue_growth",
+            "min_debt_to_equity": "min_debt_to_equity",
+            "max_debt_to_equity": "max_debt_to_equity",
+            "min_current_ratio": "min_current_ratio",
+            "max_current_ratio": "max_current_ratio",
+            "min_roe": "min_roe",
+            "max_roe": "max_roe",
+            "min_institutional_ownership": "min_institutional_ownership",
+            "max_institutional_ownership": "max_institutional_ownership",
+        }
+        raw_criteria = request.fundamental_filters.model_dump()
+        criteria = {}
+        for k, v in raw_criteria.items():
+            mapped_key = _criteria_key_map.get(k, k)
+            criteria[mapped_key] = v
+        reasons = _generate_screening_reasons(financials, criteria)
+
+        # Create result
+        result = StockScreenerResult(
+            ticker=ticker,
+            company_name=company_name,
+            sector=sector,
+            market_cap=financials.get("market_cap"),
+            price=financials.get("price"),
+            pe_ratio=financials.get("pe_ratio"),
+            peg_ratio=financials.get("peg_ratio"),
+            revenue_growth=financials.get("revenue_growth"),
+            earnings_growth=financials.get("eps_growth"),
+            debt_to_equity=financials.get("debt_to_equity"),
+            current_ratio=financials.get("current_ratio"),
+            roe=financials.get("roe"),
+            institutional_ownership=financials.get("institutional_ownership"),
+            technical_indicators=tech_indicators,
+            pattern=pattern,
+            gann_levels=gann,
+            score=score,
+            reasons=reasons,
+        )
+
+        return result
+
+    except Exception as e:
+        logger.debug(f"Error processing {ticker}: {e}")
+        return None
+
+
+async def _process_technical_analysis_async(
+    ticker: str,
+    financials: dict,
+    request: AdvancedScreenerRequest,
+    yf_provider: YFinanceProvider,
+    gann_calc,
+    pattern_detector,
+    market_data: MarketDataProvider,
+    semaphore: asyncio.Semaphore,
+) -> Optional[StockScreenerResult]:
+    """
+    Asynchronously process technical analysis for a single stock with semaphore control.
+
+    Args:
+        ticker: Stock ticker symbol
+        financials: Financial data dict
+        request: Advanced screener request
+        yf_provider: YFinanceProvider instance
+        gann_calc: Gann calculator instance
+        pattern_detector: Pattern detector instance
+        market_data: MarketDataProvider instance
+        semaphore: Asyncio semaphore to limit concurrent requests
+
+    Returns:
+        StockScreenerResult if successful, None otherwise
+    """
+    async with semaphore:
+        try:
+            # Run the synchronous processing in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                partial(
+                    _process_single_stock_technical,
+                    ticker,
+                    financials,
+                    request,
+                    yf_provider,
+                    gann_calc,
+                    pattern_detector,
+                    market_data,
+                ),
+            )
+            return result
+        except Exception as e:
+            logger.debug(f"Exception processing {ticker}: {e}")
+            return None
+
+
+async def _batch_process_technical_analysis(
+    stocks: list[tuple[str, dict]],
+    request: AdvancedScreenerRequest,
+    yf_provider: YFinanceProvider,
+    gann_calc,
+    pattern_detector,
+    market_data: MarketDataProvider,
+    max_concurrent: int = 5,
+) -> list[StockScreenerResult]:
+    """
+    Process technical analysis for multiple stocks concurrently with controlled concurrency.
+
+    Args:
+        stocks: List of (ticker, financials) tuples from Phase 1
+        request: Advanced screener request with all filters
+        yf_provider: YFinanceProvider instance
+        gann_calc: Gann calculator instance
+        pattern_detector: Pattern detector instance
+        market_data: MarketDataProvider instance
+        max_concurrent: Maximum number of concurrent API requests (default: 5)
+
+    Returns:
+        List of StockScreenerResult objects for stocks that passed all filters
+    """
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    # Create tasks for all stocks
+    tasks = [
+        _process_technical_analysis_async(
+            ticker,
+            financials,
+            request,
+            yf_provider,
+            gann_calc,
+            pattern_detector,
+            market_data,
+            semaphore,
+        )
+        for ticker, financials in stocks
+    ]
+
+    # Gather all results concurrently
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Filter out None results and exceptions
+    successful_results = []
+    for result in results:
+        if isinstance(result, StockScreenerResult):
+            successful_results.append(result)
+        elif isinstance(result, Exception):
+            logger.debug(f"Exception during batch technical analysis: {result}")
+
+    return successful_results
+
+
 @router.post(
     "/advanced",
     response_model=ScreenerResponse,
@@ -723,11 +1001,9 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
             logger.info(f"Limited to top {len(fundamental_passed)} stocks for technical analysis")
 
         # Phase 2 & 3: Apply technical filters and market regime
-        results = []
         apply_market_regime = request.market_regime != MarketRegime.ANY
 
-        # Get VIX if needed
-        current_vix = None
+        # Get VIX if needed (check market regime early to avoid processing)
         if apply_market_regime:
             try:
                 vix_data = yf_provider.get_vix_data()
@@ -752,155 +1028,20 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
             except Exception as e:
                 logger.warning(f"Could not fetch VIX, skipping market regime filter: {e}")
 
-        # Process each stock that passed fundamentals
-        for ticker, financials in fundamental_passed:
-            try:
-                # Fetch technical data if needed
-                tech_indicators = None
-                pattern = None
-                gann = None
+        # Phase 2: Process all stocks concurrently with technical analysis
+        logger.info(f"Phase 2: Processing {len(fundamental_passed)} stocks with concurrent technical analysis (max 5 workers)...")
 
-                if apply_technical:
-                    try:
-                        # Get technical indicators
-                        indicators = yf_provider.get_technical_indicators(ticker, period="3mo")
+        results = await _batch_process_technical_analysis(
+            fundamental_passed,
+            request,
+            yf_provider,
+            gann_calc,
+            pattern_detector,
+            market_data,
+            max_concurrent=5,  # Conservative limit for yfinance API
+        )
 
-                        # Apply RSI filter
-                        if request.technical_filters.rsi_condition != RSICondition.ANY:
-                            if not _passes_rsi_filter(indicators, request.technical_filters.rsi_condition):
-                                continue
-
-                        # Apply MACD filter
-                        if request.technical_filters.macd_condition != MACDCondition.ANY:
-                            if not _passes_macd_filter(indicators, request.technical_filters.macd_condition):
-                                continue
-
-                        # Build technical indicators model
-                        tech_indicators = TechnicalIndicators(
-                            rsi_current=indicators["rsi"]["current"],
-                            rsi_oversold=indicators["rsi"]["oversold"],
-                            rsi_overbought=indicators["rsi"]["overbought"],
-                            macd_bullish_crossover=indicators["macd"]["bullish_crossover"],
-                            macd_bearish_crossover=indicators["macd"]["bearish_crossover"],
-                        )
-
-                        # Pattern detection
-                        if request.technical_filters.pattern != BulkowskiPattern.ANY:
-                            hist_data = yf_provider.get_historical_data(ticker, period="6mo")
-
-                            # Mapping from BulkowskiPattern to detection methods
-                            pattern_detection_map = {
-                                BulkowskiPattern.PIPE_BOTTOM: pattern_detector.detect_pipe_bottom,
-                                BulkowskiPattern.DOUBLE_BOTTOM: pattern_detector.detect_double_bottom,
-                                # Add new patterns here as needed
-                            }
-
-                            detect_func = pattern_detection_map.get(request.technical_filters.pattern)
-                            if detect_func is not None:
-                                pattern_result = detect_func(hist_data)
-                            else:
-                                pattern_result = {"detected": False}
-
-                            if not pattern_result["detected"]:
-                                continue
-
-                            pattern = PatternDetection(**pattern_result)
-
-                        # Gann level detection
-                        if request.technical_filters.gann_location != GannLocation.ANY:
-                            current_price = financials.get("price", 0)
-                            if current_price:
-                                # Use 52-week low as reference for support/resistance calculation
-                                # This gives meaningful Gann levels based on recent price action
-                                reference_price = financials.get("52_week_low", current_price)
-                                gann_levels = gann_calc.calculate_gann_levels(current_price, reference_price)
-                                at_level = gann_calc.is_at_key_level(current_price, reference_price)
-
-                                if request.technical_filters.gann_location == GannLocation.AT_SUPPORT:
-                                    if not at_level["at_support"]:
-                                        continue
-                                elif request.technical_filters.gann_location == GannLocation.AT_RESISTANCE:
-                                    if not at_level["at_resistance"]:
-                                        continue
-
-                                gann = GannLevels(
-                                    nearest_support=gann_levels["nearest_support"],
-                                    nearest_resistance=gann_levels["nearest_resistance"],
-                                    at_support=at_level["at_support"],
-                                    at_resistance=at_level["at_resistance"],
-                                    position=gann_levels["current_position"],
-                                )
-
-                    except Exception as e:
-                        logger.debug(f"Technical analysis failed for {ticker}: {e}")
-                        continue
-
-                # Get ticker details
-                try:
-                    details = market_data.get_ticker_details(ticker)
-                    company_name = details.get("name", ticker)
-                    sector = details.get("sector", "")
-                except Exception:
-                    company_name = ticker
-                    sector = ""
-
-                # Calculate score
-                score = _calculate_lynch_score(financials)
-
-                # Generate reasons
-                # Map model dump keys to expected keys for _generate_screening_reasons
-                _criteria_key_map = {
-                    "min_eps_growth": "min_earnings_growth",
-                    "max_eps_growth": "max_earnings_growth",
-                    "min_peg_ratio": "min_peg_ratio",
-                    "max_peg_ratio": "max_peg_ratio",
-                    "min_pe_ratio": "min_pe_ratio",
-                    "max_pe_ratio": "max_pe_ratio",
-                    "min_revenue_growth": "min_revenue_growth",
-                    "max_revenue_growth": "max_revenue_growth",
-                    "min_debt_to_equity": "min_debt_to_equity",
-                    "max_debt_to_equity": "max_debt_to_equity",
-                    "min_current_ratio": "min_current_ratio",
-                    "max_current_ratio": "max_current_ratio",
-                    "min_roe": "min_roe",
-                    "max_roe": "max_roe",
-                    "min_institutional_ownership": "min_institutional_ownership",
-                    "max_institutional_ownership": "max_institutional_ownership",
-                }
-                raw_criteria = request.fundamental_filters.model_dump()
-                criteria = {}
-                for k, v in raw_criteria.items():
-                    mapped_key = _criteria_key_map.get(k, k)
-                    criteria[mapped_key] = v
-                reasons = _generate_screening_reasons(financials, criteria)
-
-                # Create result
-                result = StockScreenerResult(
-                    ticker=ticker,
-                    company_name=company_name,
-                    sector=sector,
-                    market_cap=financials.get("market_cap"),
-                    price=financials.get("price"),
-                    pe_ratio=financials.get("pe_ratio"),
-                    peg_ratio=financials.get("peg_ratio"),
-                    revenue_growth=financials.get("revenue_growth"),
-                    earnings_growth=financials.get("eps_growth"),
-                    debt_to_equity=financials.get("debt_to_equity"),
-                    current_ratio=financials.get("current_ratio"),
-                    roe=financials.get("roe"),
-                    institutional_ownership=financials.get("institutional_ownership"),
-                    technical_indicators=tech_indicators,
-                    pattern=pattern,
-                    gann_levels=gann,
-                    score=score,
-                    reasons=reasons,
-                )
-
-                results.append(result)
-
-            except Exception as e:
-                logger.error(f"Error processing {ticker}: {e}")
-                continue
+        logger.info(f"Phase 2 complete: {len(results)} stocks passed all filters")
 
         # Sort by score
         results.sort(key=lambda x: x.score, reverse=True)
