@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navigation from './components/Navigation';
+import StockScreenerPage from './pages/StockScreenerPage';
 import OptionsPage from './pages/OptionsPage';
 import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
 import { apiClient } from './config/api';
@@ -67,7 +68,8 @@ const App: React.FC = () => {
         <Navigation />
 
         <Routes>
-          <Route path="/" element={<Navigate to="/options" replace />} />
+          <Route path="/" element={<Navigate to="/screener" replace />} />
+          <Route path="/screener" element={<StockScreenerPage />} />
           <Route path="/options" element={<OptionsPage />} />
           <Route path="/technical" element={<TechnicalAnalysisPage />} />
         </Routes>

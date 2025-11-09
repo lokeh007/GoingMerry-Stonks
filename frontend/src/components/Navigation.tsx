@@ -18,8 +18,14 @@ const Navigation: React.FC = () => {
   return (
     <nav className="main-navigation">
       <Link
+        to="/screener"
+        className={`nav-link ${isActive('/screener') || isActive('/') ? 'active' : ''}`}
+      >
+        Stock Screener
+      </Link>
+      <Link
         to="/options"
-        className={`nav-link ${isActive('/options') || isActive('/') ? 'active' : ''}`}
+        className={`nav-link ${isActive('/options') ? 'active' : ''}`}
       >
         Options Analysis
       </Link>
