@@ -1,0 +1,170 @@
+/**
+ * Lynch Filters Component Styles
+ */
+
+.lynch-filters {
+  width: 100%;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+  color: #1f2937;
+}
+
+.section-description {
+  margin: 0 0 24px 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.filter-group {
+  margin-bottom: 32px;
+}
+
+.filter-label {
+  display: block;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.filter-hint {
+  display: block;
+  font-weight: 400;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin-top: 2px;
+}
+
+.category-select {
+  width: 100%;
+  max-width: 400px;
+  padding: 12px 16px;
+  font-size: 1rem;
+  border: 2px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.category-select:hover:not(:disabled) {
+  border-color: #10b981;
+}
+
+.category-select:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.category-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.loading-indicator {
+  margin-left: 12px;
+  color: #10b981;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filter-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-input {
+  flex: 1;
+  padding: 10px 14px;
+  font-size: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.filter-input:hover:not(:disabled) {
+  border-color: #cbd5e0;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.filter-input:disabled {
+  background: #f9fafb;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.filter-input-small {
+  flex: 0 1 100px;
+  min-width: 80px;
+}
+
+.filter-value {
+  font-weight: 600;
+  color: #10b981;
+  min-width: 80px;
+  text-align: right;
+  font-size: 0.95rem;
+}
+
+/* Remove spinner arrows from number inputs */
+.filter-input[type="number"]::-webkit-inner-spin-button,
+.filter-input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.filter-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+@media (max-width: 768px) {
+  .filters-grid {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .category-select {
+    max-width: none;
+  }
+
+  .filter-control,
+  .filter-control-group {
+    flex-wrap: wrap;
+  }
+
+  .filter-value {
+    width: 100%;
+    text-align: left;
+    margin-top: 4px;
+  }
+}

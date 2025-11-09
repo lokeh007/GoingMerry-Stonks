@@ -1,0 +1,142 @@
+/**
+ * Stock Screener Page Styles
+ */
+
+.stock-screener-page {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.screener-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.screener-title {
+  font-size: 2rem;
+  margin: 0;
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.screener-subtitle {
+  margin: 5px 0 0 0;
+  color: #6b7280;
+  font-size: 1rem;
+}
+
+.screener-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.screener-actions {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin: 32px 0;
+}
+
+.run-screen-button {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 16px 48px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
+}
+
+.run-screen-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
+}
+
+.run-screen-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.reset-button {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  padding: 16px 32px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reset-button:hover:not(:disabled) {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+}
+
+.reset-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.screener-error {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+  color: #991b1b;
+}
+
+.screener-error strong {
+  font-weight: 700;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #6b7280;
+  font-size: 1.125rem;
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .stock-screener-page {
+    padding: 12px;
+  }
+
+  .screener-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .screener-title {
+    font-size: 1.5rem;
+  }
+
+  .screener-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .run-screen-button,
+  .reset-button {
+    width: 100%;
+  }
+}
