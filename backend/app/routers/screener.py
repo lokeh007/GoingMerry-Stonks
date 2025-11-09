@@ -7,6 +7,7 @@ including the 'Alpha Engine' module for identifying investment opportunities.
 
 from datetime import datetime
 import logging
+import os
 from typing import Optional, Dict
 import asyncio
 from functools import partial
@@ -29,8 +30,8 @@ from ..models.screener import (
     BulkowskiPattern,
     GannLocation,
     MarketRegime,
+    StockUniverse,
 )
-from ..services.market_data import MarketDataProvider, MarketDataError
 from ..services.yfinance_provider import YFinanceProvider
 from ..financial_models.gann import get_gann_calculator
 from ..financial_models.patterns import get_pattern_detector
@@ -39,13 +40,8 @@ from ..financial_models.patterns import get_pattern_detector
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Module-level constants for field name mapping
-# Maps request model field names to expected screening reason field names
-# Only includes fields that need transformation (identity mappings removed for performance)
-_CRITERIA_KEY_MAP = {
-    "min_eps_growth": "min_earnings_growth",
-    "max_eps_growth": "max_earnings_growth",
-}
+# Configuration constants
+MAX_STOCKS_FOR_TECHNICAL = int(os.getenv("MAX_STOCKS_FOR_TECHNICAL", "100"))
 
 # Initialize router
 router = APIRouter(
@@ -100,9 +96,9 @@ async def get_lynch_fast_growers(
         ge=0.1,
         le=10000,
     ),
-    universe: str = Query(
-        "popular",
-        description="Stock universe to screen (popular, sp500_sample, tech)",
+    universe: StockUniverse = Query(
+        StockUniverse.POPULAR,
+        description="Stock universe to screen",
     ),
     limit: int = Query(
         20,
@@ -189,23 +185,11 @@ async def get_lynch_fast_growers(
             f"max_peg={max_peg_ratio}, max_d/e={max_debt_to_equity}"
         )
 
-        # Build screening criteria
-        criteria = {
-            "min_earnings_growth": min_earnings_growth,
-            "max_earnings_growth": max_earnings_growth,
-            "max_peg_ratio": max_peg_ratio,
-            "min_current_ratio": min_current_ratio,
-            "max_debt_to_equity": max_debt_to_equity,
-            "min_market_cap": min_market_cap,
-            "universe": universe,
-        }
-
         # Initialize yfinance provider
         yf_provider = YFinanceProvider()
-        market_data = MarketDataProvider()
 
         # Get stock universe to screen
-        tickers = market_data.get_stock_universe(universe)
+        tickers = yf_provider.get_stock_universe(universe)
         logger.info(f"Screening {len(tickers)} stocks from '{universe}' universe")
 
         # Screen stocks
@@ -230,8 +214,13 @@ async def get_lynch_fast_growers(
                 market_cap = financials["market_cap"] or 0
 
                 # Check all criteria
+                # Handle EPS growth range (support None for max_earnings_growth)
+                eps_growth_passes = eps_growth >= min_earnings_growth
+                if max_earnings_growth is not None:
+                    eps_growth_passes = eps_growth_passes and eps_growth <= max_earnings_growth
+
                 passes_screen = (
-                    min_earnings_growth <= eps_growth <= max_earnings_growth
+                    eps_growth_passes
                     and peg_ratio < max_peg_ratio
                     and debt_to_equity < max_debt_to_equity
                     and current_ratio >= min_current_ratio
@@ -247,7 +236,7 @@ async def get_lynch_fast_growers(
                     score = _calculate_lynch_score(financials)
 
                     # Build reasons list
-                    reasons = _generate_screening_reasons(financials, criteria)
+                    reasons = _generate_screening_reasons(financials)
 
                     # Create result object
                     result = StockScreenerResult(
@@ -267,14 +256,10 @@ async def get_lynch_fast_growers(
                     )
 
                     results.append(result)
-                    logger.info(f"✓ {ticker} passed screen (Score: {score:.1f})")
+                    logger.debug(f"✓ {ticker} passed screen (Score: {score:.1f})")
 
-            except MarketDataError as e:
-                logger.warning(f"Failed to fetch data for {ticker}: {e}")
-                failed_tickers.append(ticker)
-                continue
             except Exception as e:
-                logger.error(f"Unexpected error screening {ticker}: {e}")
+                logger.warning(f"Failed to screen {ticker}: {e}")
                 failed_tickers.append(ticker)
                 continue
 
@@ -284,10 +269,25 @@ async def get_lynch_fast_growers(
         # Limit results
         results = results[:limit]
 
+        # Log summary with top results
+        passing_tickers = [r.ticker for r in results]
+        top_tickers = ', '.join(passing_tickers[:10]) if passing_tickers else "none"
         logger.info(
             f"Screening complete: {len(results)} stocks passed, "
-            f"{len(failed_tickers)} failed/skipped"
+            f"{len(failed_tickers)} failed/skipped. Top results: {top_tickers}"
+            + (f"... ({len(passing_tickers)} total)" if len(passing_tickers) > 10 else "")
         )
+
+        # Build criteria for response
+        criteria = {
+            "min_earnings_growth": min_earnings_growth,
+            "max_earnings_growth": max_earnings_growth,
+            "max_peg_ratio": max_peg_ratio,
+            "min_current_ratio": min_current_ratio,
+            "max_debt_to_equity": max_debt_to_equity,
+            "min_market_cap": min_market_cap,
+            "universe": universe,
+        }
 
         response = ScreenerResponse(
             screener_name="Lynch Fast Growers",
@@ -330,10 +330,12 @@ async def list_screeners():
             "endpoint": "/api/screener/lynch-fast-growers",
             "description": "Peter Lynch's strategy for finding fast-growing companies",
             "criteria": [
-                "Earnings growth: 10-25% annually",
-                "PEG ratio < 2.5",
-                "Current ratio > 1.0",
-                "Debt-to-equity < 2.0",
+                "Earnings growth: 15%+ annually (no upper limit)",
+                "PEG ratio < 2.0",
+                "Current ratio ≥ 1.0",
+                "Debt-to-equity < 0.8",
+                "ROE ≥ 15%",
+                "Market cap ≥ $1B",
             ],
             "ideal_for": "Growth investors seeking undervalued high-growth stocks",
             "risk_level": "Medium",
@@ -395,15 +397,15 @@ async def get_category_presets(category: LynchCategory):
         LynchCategory.FAST_GROWERS: {
             "category": "fast_growers",
             "name": "Fast Growers",
-            "description": "Companies with 15-30% annual growth, trading at reasonable valuations",
-            "philosophy": "Lynch's most profitable category. Look for companies in early growth phase with strong fundamentals and PEG < 1.0",
+            "description": "Companies with strong growth, trading at reasonable valuations",
+            "philosophy": "Lynch's most profitable category. Look for companies in growth phase with strong fundamentals and reasonable PEG",
             "filters": {
-                "max_peg_ratio": 1.0,
+                "max_peg_ratio": 2.0,  # Relaxed from 1.0 for modern market
                 "min_eps_growth": 15.0,
-                "max_eps_growth": 30.0,
-                "max_debt_to_equity": 0.6,
+                "max_eps_growth": None,  # No upper limit on growth
+                "max_debt_to_equity": 0.8,  # Relaxed from 0.6
                 "min_roe": 15.0,
-                "max_institutional_ownership": 30.0,
+                "max_institutional_ownership": None,  # Removed restriction
                 "min_market_cap": 1.0,
                 "min_current_ratio": 1.0,
             },
@@ -414,13 +416,13 @@ async def get_category_presets(category: LynchCategory):
         LynchCategory.STALWARTS: {
             "category": "stalwarts",
             "name": "Stalwarts",
-            "description": "Large, well-known companies with consistent moderate growth",
-            "philosophy": "Blue-chip stocks bought during market corrections. Less exciting but reliable 30-50% gains",
+            "description": "Large, well-known companies with consistent growth",
+            "philosophy": "Blue-chip stocks bought during market corrections. Less exciting but reliable gains",
             "filters": {
-                "max_peg_ratio": 1.5,
-                "min_eps_growth": 10.0,
-                "max_eps_growth": 15.0,
-                "max_debt_to_equity": 0.8,
+                "max_peg_ratio": 2.5,  # Relaxed from 1.5 for modern market
+                "min_eps_growth": 8.0,  # Lowered from 10.0
+                "max_eps_growth": None,  # No upper limit
+                "max_debt_to_equity": 1.0,  # Slightly relaxed from 0.8
                 "min_roe": 12.0,
                 "max_institutional_ownership": None,  # Any
                 "min_market_cap": 10.0,  # Large caps
@@ -625,7 +627,6 @@ def _process_single_stock_technical(
     yf_provider: YFinanceProvider,
     gann_calc,
     pattern_detector,
-    market_data: MarketDataProvider,
 ) -> Optional[StockScreenerResult]:
     """
     Process technical analysis for a single stock (synchronous).
@@ -640,7 +641,6 @@ def _process_single_stock_technical(
         yf_provider: YFinanceProvider instance
         gann_calc: Gann calculator instance
         pattern_detector: Pattern detector instance
-        market_data: MarketDataProvider instance
 
     Returns:
         StockScreenerResult if all filters pass, None otherwise
@@ -699,10 +699,10 @@ def _process_single_stock_technical(
 
                 # Gann level detection
                 if request.technical_filters.gann_location != GannLocation.ANY:
-                    current_price = financials.get("price", 0)
+                    current_price = financials.get("current_price", 0)
                     if current_price:
                         # Use 52-week low as reference for support/resistance calculation
-                        reference_price = financials.get("52_week_low", current_price)
+                        reference_price = financials.get("week_52_low", current_price)
                         gann_levels = gann_calc.calculate_gann_levels(current_price, reference_price)
                         at_level = gann_calc.is_at_key_level(current_price, reference_price)
 
@@ -725,26 +725,15 @@ def _process_single_stock_technical(
                 logger.debug(f"Technical analysis failed for {ticker}: {e}")
                 return None
 
-        # Get ticker details
-        try:
-            details = market_data.get_ticker_details(ticker)
-            company_name = details.get("name", ticker)
-            sector = details.get("sector", "")
-        except Exception:
-            company_name = ticker
-            sector = ""
+        # Get company name and sector from yfinance data (already fetched in Phase 1)
+        company_name = financials.get("company_name", ticker)
+        sector = financials.get("sector", "")
 
         # Calculate score
         score = _calculate_lynch_score(financials)
 
-        # Generate reasons using module-level criteria mapping
-        raw_criteria = request.fundamental_filters.model_dump()
-        criteria = {}
-        for k, v in raw_criteria.items():
-            # Use module-level constant for field name transformation
-            mapped_key = _CRITERIA_KEY_MAP.get(k, k)
-            criteria[mapped_key] = v
-        reasons = _generate_screening_reasons(financials, criteria)
+        # Generate reasons
+        reasons = _generate_screening_reasons(financials)
 
         # Create result
         result = StockScreenerResult(
@@ -752,7 +741,7 @@ def _process_single_stock_technical(
             company_name=company_name,
             sector=sector,
             market_cap=financials.get("market_cap"),
-            price=financials.get("price"),
+            price=financials.get("current_price"),
             pe_ratio=financials.get("pe_ratio"),
             peg_ratio=financials.get("peg_ratio"),
             revenue_growth=financials.get("revenue_growth"),
@@ -782,7 +771,6 @@ async def _process_technical_analysis_async(
     yf_provider: YFinanceProvider,
     gann_calc,
     pattern_detector,
-    market_data: MarketDataProvider,
     semaphore: asyncio.Semaphore,
 ) -> Optional[StockScreenerResult]:
     """
@@ -795,7 +783,6 @@ async def _process_technical_analysis_async(
         yf_provider: YFinanceProvider instance
         gann_calc: Gann calculator instance
         pattern_detector: Pattern detector instance
-        market_data: MarketDataProvider instance
         semaphore: Asyncio semaphore to limit concurrent requests
 
     Returns:
@@ -815,7 +802,6 @@ async def _process_technical_analysis_async(
                     yf_provider,
                     gann_calc,
                     pattern_detector,
-                    market_data,
                 ),
             )
             return result
@@ -830,7 +816,6 @@ async def _batch_process_technical_analysis(
     yf_provider: YFinanceProvider,
     gann_calc,
     pattern_detector,
-    market_data: MarketDataProvider,
     max_concurrent: int = 5,
 ) -> list[StockScreenerResult]:
     """
@@ -842,7 +827,6 @@ async def _batch_process_technical_analysis(
         yf_provider: YFinanceProvider instance
         gann_calc: Gann calculator instance
         pattern_detector: Pattern detector instance
-        market_data: MarketDataProvider instance
         max_concurrent: Maximum number of concurrent API requests (default: 5)
 
     Returns:
@@ -859,7 +843,6 @@ async def _batch_process_technical_analysis(
             yf_provider,
             gann_calc,
             pattern_detector,
-            market_data,
             semaphore,
         )
         for ticker, financials in stocks
@@ -924,16 +907,12 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         )
 
         # Initialize providers
-        market_data = MarketDataProvider()
         yf_provider = YFinanceProvider()
         gann_calc = get_gann_calculator()
         pattern_detector = get_pattern_detector()
 
         # Get stock universe
-        if request.universe in ["nasdaq", "nyse", "all"]:
-            tickers = yf_provider.get_stock_universe(request.universe.upper())
-        else:
-            tickers = market_data.get_stock_universe(request.universe)
+        tickers = yf_provider.get_stock_universe(request.universe)
 
         logger.info(f"Screening {len(tickers)} stocks from '{request.universe}' universe")
 
@@ -970,7 +949,6 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         logger.info(f"Phase 1 complete: {len(fundamental_passed)} passed fundamental filters")
 
         # Optimization: Limit stocks for technical analysis to prevent excessive API calls
-        MAX_STOCKS_FOR_TECHNICAL = 100
         apply_technical = _should_apply_technical_filters(request.technical_filters)
 
         if apply_technical and len(fundamental_passed) > MAX_STOCKS_FOR_TECHNICAL:
@@ -1024,7 +1002,6 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
             yf_provider,
             gann_calc,
             pattern_detector,
-            market_data,
             max_concurrent=5,  # Conservative limit for yfinance API
         )
 
@@ -1253,13 +1230,12 @@ def _calculate_lynch_score(financials: dict) -> float:
     return round(score, 1)
 
 
-def _generate_screening_reasons(financials: dict, criteria: dict) -> list[str]:
+def _generate_screening_reasons(financials: dict) -> list[str]:
     """
     Generate human-readable reasons why a stock passed screening.
 
     Args:
         financials: Dict containing financial metrics
-        criteria: Dict containing screening criteria
 
     Returns:
         List of reason strings
@@ -1305,11 +1281,6 @@ def _generate_screening_reasons(financials: dict, criteria: dict) -> list[str]:
             reasons.append(f"Strong liquidity (CR: {current_ratio:.2f})")
         elif current_ratio >= 1.5:
             reasons.append(f"Good liquidity (CR: {current_ratio:.2f})")
-
-    # Revenue Growth reason
-    revenue_growth = financials.get("revenue_growth", 0)
-    if revenue_growth and revenue_growth >= 15:
-        reasons.append(f"Strong revenue growth ({revenue_growth:.1f}%)")
 
     # If we have very few reasons, add at least one generic one
     if len(reasons) < 2:

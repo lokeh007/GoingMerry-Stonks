@@ -20,6 +20,25 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 
 ---
 
+## 🎉 Recent Updates (November 2025)
+
+### Enhanced Stock Screener
+- ✅ **yfinance Migration Complete** - Unlimited free market data, no more rate limits!
+- ✅ **14 Financial Metrics** - Added PE ratio, revenue growth, 52-week high/low
+- ✅ **Advanced Multi-Layer Screening** - Fundamentals + Technical + Market Context
+- ✅ **6 Lynch Categories** - Complete Peter Lynch investment framework
+- ✅ **Input Validation** - Type-safe stock universe selection with enums
+- ✅ **Optimized Performance** - Debug-level logging for high-volume screening
+
+### Code Quality Improvements
+- ✅ **All Tests Passing** - 46/46 tests, 39% coverage
+- ✅ **Simplified Codebase** - Removed dead code and unnecessary complexity
+- ✅ **Better Configuration** - Environment variable support for technical limits
+- ✅ **Improved Documentation** - Updated endpoint docs to match actual behavior
+- ✅ **Enhanced Error Handling** - Proper exception handling for yfinance integration
+
+---
+
 ## ✨ Key Features
 
 ### 📊 Options Analysis
@@ -46,11 +65,19 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 - **Risk/reward analysis** with ROC calculations
 - **Hover tooltips** for precise P/L at any price point
 
-### 🔍 Alpha Engine - Stock Screener
-- **Lynch Fast Growers**: Peter Lynch's growth investing strategy
-- **Customizable screening criteria**
-- **Detailed financial metrics** (PEG ratio, earnings growth, financial health)
-- **Scored and ranked results** with reasoning
+### 🔍 Alpha Engine - Stock Screener (Enhanced!)
+- **Lynch Fast Growers**: Peter Lynch's legendary growth investing strategy
+- **6 Lynch Categories**: Fast Growers, Stalwarts, Slow Growers, Cyclicals, Turnarounds, Asset Plays
+- **Advanced Multi-Layered Screening**:
+  - **Layer 1: Fundamentals** - PEG ratio, earnings growth, debt ratios, ROE, liquidity
+  - **Layer 2: Technical Triggers** - RSI, MACD, Gann levels, chart patterns
+  - **Layer 3: Market Context** - VIX-based market regime filtering
+- **Free Market Data**: Powered by yfinance (unlimited API calls, no rate limits!)
+- **14 Financial Metrics**: PE ratio, PEG, EPS growth, revenue growth, debt/equity, ROE, current ratio, institutional ownership, 52-week high/low, and more
+- **Smart Scoring Algorithm**: 0-100 scoring based on multiple criteria
+- **Customizable Criteria**: Adjust thresholds for PEG, growth rates, debt levels, etc.
+- **Multiple Stock Universes**: Popular stocks, S&P 500 sample, Tech sector, or custom lists
+- **Detailed Reasoning**: Each result includes specific reasons for passing the screen
 
 ### 🎯 Financial Metrics
 - Net credit/debit calculations
@@ -122,7 +149,8 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 ### Backend
 - **FastAPI** - Modern, fast Python web framework
 - **Pydantic** - Data validation using Python type hints
-- **Polygon.io API** - Real-time and historical market data
+- **yfinance** - Free, unlimited market data and fundamentals (NEW!)
+- **Polygon.io API** - Real-time options data and historical prices
 - **NumPy/SciPy** - Financial calculations and Black-Scholes model
 - **SQLAlchemy** - Database ORM (future use)
 - **Python 3.11** - Type hints, modern syntax
@@ -167,7 +195,8 @@ GoingMerry-Stonks/
 │   │   │   ├── options.py               # Options API endpoints
 │   │   │   └── screener.py              # Screener API endpoints
 │   │   ├── services/
-│   │   │   └── market_data.py           # Polygon.io integration
+│   │   │   ├── yfinance_provider.py     # yfinance market data integration (NEW!)
+│   │   │   └── market_data.py           # Polygon.io integration (options)
 │   │   └── financial_models/
 │   │       └── options_pricing.py       # Black-Scholes-Merton model
 │   ├── tests/                           # Test suite (46 tests)
@@ -729,10 +758,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- **Peter Lynch** - Fast Growers investment strategy
+- **Peter Lynch** - Fast Growers investment strategy and six stock categories
 - **Black, Scholes, Merton** - Options pricing model
-- **Polygon.io** - Market data API
+- **yfinance** - Free market data and fundamentals API
+- **Polygon.io** - Real-time options and market data API
 - **FastAPI** - Modern Python web framework
+- **React & TypeScript** - Frontend framework and type safety
 - **React** - UI component library
 - **Chart.js** - Data visualization
 - **Google Cloud Platform** - Cloud infrastructure

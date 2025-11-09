@@ -1,5 +1,6 @@
 # GoingMerry-Stonks - Deployment Status Report
 
+**Last Updated:** November 8, 2025
 **Generated:** November 3, 2025
 **Environment:** Production
 **Project ID:** sylvan-earth-477020-u6
@@ -262,6 +263,180 @@ terraform {
 | **Total Estimated** | | **$264-396/month** |
 
 *Actual costs depend on traffic volume and usage patterns*
+
+---
+
+## Recent Updates
+
+### November 8, 2025 - Phase 1 Critical Fixes (v3.1.3-hotfix)
+
+**Code Review Completed:** Comprehensive review of screener codebase identified 19 issues
+**Document:** `backend/Screener-Code-Issues.md`
+
+#### Critical Fixes Implemented
+
+**Issue #3: Inconsistent Price Field Naming** ✅
+- **Problem:** Code used both `price` and `current_price` fields inconsistently
+- **Impact:** Gann level calculation received 0 for current_price, price field was None in API responses
+- **Fix:** Standardized all references to use `financials.get("current_price")`
+- **Files Modified:** `app/routers/screener.py` (lines 702, 755)
+- **Test Result:** ✅ All tests pass - current_price correctly populated (e.g., AAPL: $268.47)
+
+**Issue #5: max_earnings_growth None Comparison Bug** ✅
+- **Problem:** Lynch Fast Growers endpoint crashed when max_earnings_growth was None
+- **Impact:** TypeError on comparison `eps_growth <= None` with relaxed presets
+- **Fix:** Added explicit None check before upper bound comparison
+- **Code:**
+  ```python
+  # Before (broken):
+  passes_screen = (min_earnings_growth <= eps_growth <= max_earnings_growth)
+
+  # After (fixed):
+  eps_growth_passes = eps_growth >= min_earnings_growth
+  if max_earnings_growth is not None:
+      eps_growth_passes = eps_growth_passes and eps_growth <= max_earnings_growth
+  ```
+- **Files Modified:** `app/routers/screener.py` (lines 233-244)
+- **Test Results:**
+  - ✅ None handling works correctly (no max limit)
+  - ✅ Upper bound check works when max is specified
+  - ✅ Upper bound rejection works when exceeded
+
+#### Testing Summary
+- **Test Script:** `/tmp/test_phase1_fixes.py`
+- **Results:** All tests passing ✅
+- **Current Price Test:** AAPL fetched at $268.47
+- **None Handling:** Correctly handles unlimited EPS growth
+- **Boundary Checks:** Properly enforces max when specified
+
+### November 8, 2025 - Phase 2 Complete yfinance Migration ✅
+
+**Status:** COMPLETE
+**Code Version:** v3.2.0-yfinance-migration
+
+#### Issues Resolved
+
+**Issue #2: Added Missing Fields to yfinance_provider** ✅
+- **Added Fields:**
+  - `pe_ratio`: Calculated from price/EPS or fetched from yfinance
+  - `revenue_growth`: Year-over-year revenue growth from financials
+  - `week_52_low`: 52-week low price for Gann calculations
+  - `week_52_high`: 52-week high price
+- **Methods Added:**
+  - `_calculate_pe_ratio()`: Fetches trailingPE or calculates from price/EPS
+  - `_calculate_revenue_growth()`: Similar logic to EPS growth calculation
+- **Test Result:** ✅ All 14/14 fields present and populated (MSFT, AAPL, GOOGL, AMD)
+
+**Issue #1: Migrated get_stock_universe to YFinanceProvider** ✅
+- **Replaced:** Exchange-based filtering (NASDAQ, NYSE, ALL)
+- **Added:** Universe-based filtering (popular, sp500_sample, tech)
+- **Legacy Support:** Maintained nasdaq/nyse/all for backward compatibility
+- **Stock Counts:**
+  - popular: 46 tickers (diversified large-caps)
+  - sp500_sample: 41 tickers (S&P 500 sample)
+  - tech: 31 tickers (technology sector)
+  - nasdaq/nyse/all: 35/34/69 tickers (legacy)
+- **Test Result:** ✅ All universe types working correctly
+
+**Issue #9: Removed MarketDataProvider from Advanced Screener** ✅
+- **Before:** Used Polygon API for company name/sector lookup (lines 730-735)
+- **After:** Uses yfinance data already fetched in Phase 1
+- **Code Change:**
+  ```python
+  # Before:
+  details = market_data.get_ticker_details(ticker)
+  company_name = details.get("name", ticker)
+  sector = details.get("sector", "")
+
+  # After:
+  company_name = financials.get("company_name", ticker)
+  sector = financials.get("sector", "")
+  ```
+- **Test Result:** ✅ screener.py imports successfully, no Polygon references
+
+**Issue #4: Added 52-Week Low for Gann Calculations** ✅
+- **Field:** `week_52_low` now available in fundamentals
+- **Usage:** Fixed reference in screener.py line 710 (`52_week_low` → `week_52_low`)
+- **Test Result:** ✅ MSFT 52-week low: $344.79, high: $555.45
+
+#### Complete Polygon Elimination ✅
+
+**Removed Dependencies:**
+1. ❌ `MarketDataProvider` import from screener.py (line 33)
+2. ❌ `market_data.get_stock_universe()` calls (lines 208, 936)
+3. ❌ `market_data.get_ticker_details()` calls (lines 730-735)
+4. ❌ All Polygon API dependencies
+
+**Files Modified:**
+1. `app/services/yfinance_provider.py`:
+   - Added PE ratio calculation (lines 345-373)
+   - Added revenue growth calculation (lines 375-451)
+   - Added 52-week low/high fields (lines 247-248)
+   - Replaced get_stock_universe method (lines 514-601)
+   - Updated docstring and logging (lines 196-282)
+
+2. `app/routers/screener.py`:
+   - Removed MarketDataProvider import (line 33)
+   - Updated Lynch Fast Growers to use yf_provider (lines 204-207)
+   - Updated advanced screener initialization (lines 918-923)
+   - Removed market_data from function signatures (lines 626-633, 776-819, 822-858)
+   - Fixed 52-week low field reference (line 710)
+   - Removed Polygon company name lookup (lines 733-735)
+
+#### Testing Results
+
+**Comprehensive Test Suite** (`/tmp/test_phase2_fixes.py`):
+```
+✅ Issue #2: All new fields present and populated
+   - PE Ratio: 35.34 (MSFT)
+   - Revenue Growth: 14.93% (MSFT)
+   - 52-Week Low: $344.79, High: $555.45
+
+✅ Issue #1: Stock universe migration working
+   - All 6 universe types functional
+   - Expected stocks present in each universe
+
+✅ Issue #9: MarketDataProvider completely removed
+   - screener.py imports successfully
+   - No Polygon references found in source
+
+✅ Comprehensive fundamentals test
+   - AAPL: 14/14 fields populated
+   - GOOGL: 14/14 fields populated
+   - AMD: 14/14 fields populated
+```
+
+#### Impact Analysis
+
+**Benefits:**
+- ✅ **No More Rate Limits:** Unlimited API calls (was 5/min with Polygon)
+- ✅ **Complete Data:** All 14 fundamental fields now available
+- ✅ **Gann Analysis:** 52-week low/high enables proper support/resistance
+- ✅ **Consistency:** Single data source for all operations
+- ✅ **Cost:** $0 API costs (free yfinance vs paid Polygon)
+
+**Field Coverage:**
+| Field | Before (Polygon) | After (yfinance) |
+|-------|------------------|------------------|
+| ticker | ✅ | ✅ |
+| company_name | ✅ | ✅ |
+| sector | ✅ | ✅ |
+| market_cap | ✅ | ✅ |
+| current_price | ✅ | ✅ |
+| peg_ratio | ✅ | ✅ |
+| eps_growth | ✅ | ✅ |
+| debt_to_equity | ✅ | ✅ |
+| roe | ✅ | ✅ |
+| current_ratio | ✅ | ✅ |
+| institutional_ownership | ✅ | ✅ |
+| **pe_ratio** | ❌ | ✅ NEW |
+| **revenue_growth** | ❌ | ✅ NEW |
+| **week_52_low** | ❌ | ✅ NEW |
+| **week_52_high** | ❌ | ✅ NEW |
+
+**Performance:**
+- **Before:** 5 API calls/min → ~10 minutes for 46 stocks
+- **After:** Unlimited → ~10-20 seconds for 46 stocks (10 concurrent)
 
 ---
 

@@ -84,37 +84,53 @@ def test_lynch_fast_growers_custom_params(test_client: TestClient, sample_stock_
 @pytest.mark.unit
 def test_lynch_fast_growers_filtering(test_client: TestClient):
     """Test that Lynch screener properly filters stocks."""
-    with patch('app.services.market_data.MarketDataProvider.get_stock_universe') as mock_universe, \
-         patch('app.services.market_data.MarketDataProvider.get_stock_financials') as mock_financials, \
-         patch('app.services.market_data.MarketDataProvider.get_ticker_details') as mock_details:
+    with patch('app.services.yfinance_provider.YFinanceProvider.get_stock_universe') as mock_universe, \
+         patch('app.services.yfinance_provider.YFinanceProvider.get_fundamentals') as mock_fundamentals:
 
         mock_universe.return_value = ["GOOD", "BAD"]
 
         # Mock different financials for each stock
-        def get_financials(ticker):
+        def get_fundamentals(ticker):
             if ticker == "GOOD":
                 return {
                     "ticker": "GOOD",
+                    "company_name": "Good Company",
+                    "sector": "Tech",
                     "peg_ratio": 0.8,
                     "eps_growth": 22.0,
                     "debt_to_equity": 0.3,
                     "current_ratio": 2.0,
                     "market_cap": 10.0,
-                    "price": 100.0
+                    "current_price": 100.0,
+                    "pe_ratio": 18.0,
+                    "revenue_growth": 15.0,
+                    "roe": 20.0,
+                    "institutional_ownership": 50.0,
+                    "week_52_low": 80.0,
+                    "week_52_high": 120.0,
+                    "timestamp": "2025-11-09"
                 }
             else:
                 return {
                     "ticker": "BAD",
+                    "company_name": "Bad Company",
+                    "sector": "Tech",
                     "peg_ratio": 3.0,  # Too high
                     "eps_growth": 5.0,  # Too low
                     "debt_to_equity": 0.3,
                     "current_ratio": 2.0,
                     "market_cap": 10.0,
-                    "price": 100.0
+                    "current_price": 100.0,
+                    "pe_ratio": 25.0,
+                    "revenue_growth": 5.0,
+                    "roe": 10.0,
+                    "institutional_ownership": 60.0,
+                    "week_52_low": 90.0,
+                    "week_52_high": 110.0,
+                    "timestamp": "2025-11-09"
                 }
 
-        mock_financials.side_effect = get_financials
-        mock_details.return_value = {"name": "Company", "sector": "Tech"}
+        mock_fundamentals.side_effect = get_fundamentals
 
         response = test_client.get("/api/screener/lynch-fast-growers")
 
@@ -176,12 +192,7 @@ def test_screening_reasons_generation():
         "revenue_growth": 20.0
     }
 
-    criteria = {
-        "min_earnings_growth": 15.0,
-        "max_peg_ratio": 1.0
-    }
-
-    reasons = _generate_screening_reasons(financials, criteria)
+    reasons = _generate_screening_reasons(financials)
 
     assert len(reasons) > 0
     assert any("PEG" in reason for reason in reasons)

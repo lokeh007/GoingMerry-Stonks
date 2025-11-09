@@ -65,6 +65,17 @@ class GannLocation(str, Enum):
     AT_RESISTANCE = "at_resistance"
 
 
+class StockUniverse(str, Enum):
+    """Available stock universes for screening."""
+
+    POPULAR = "popular"  # 46 diversified large-caps
+    SP500_SAMPLE = "sp500_sample"  # 41 S&P 500 constituents
+    TECH = "tech"  # 31 technology sector stocks
+    NASDAQ = "nasdaq"  # Legacy: NASDAQ exchange stocks
+    NYSE = "nyse"  # Legacy: NYSE exchange stocks
+    ALL = "all"  # Legacy: All stocks
+
+
 # Data Models
 
 class TechnicalIndicators(BaseModel):
@@ -311,25 +322,26 @@ class FundamentalFilters(BaseModel):
     Fundamental screening filters (Lynch criteria).
 
     All filters are optional. If None, the filter is not applied.
+    Default values match the Lynch Fast Growers preset.
     """
 
     max_peg_ratio: Optional[float] = Field(
-        1.0, description="Maximum PEG ratio", ge=0, le=10
+        2.0, description="Maximum PEG ratio", ge=0, le=10
     )
     min_eps_growth: Optional[float] = Field(
         15.0, description="Minimum EPS growth (%)", ge=-100, le=1000
     )
     max_eps_growth: Optional[float] = Field(
-        30.0, description="Maximum EPS growth (%)", ge=-100, le=1000
+        None, description="Maximum EPS growth (%)", ge=-100, le=1000
     )
     max_debt_to_equity: Optional[float] = Field(
-        0.6, description="Maximum debt-to-equity ratio", ge=0, le=10
+        0.8, description="Maximum debt-to-equity ratio", ge=0, le=10
     )
     min_roe: Optional[float] = Field(
         15.0, description="Minimum ROE (%)", ge=-100, le=1000
     )
     max_institutional_ownership: Optional[float] = Field(
-        30.0, description="Maximum institutional ownership (%)", ge=0, le=100
+        None, description="Maximum institutional ownership (%)", ge=0, le=100
     )
     min_market_cap: Optional[float] = Field(
         1.0, description="Minimum market cap in billions", ge=0.001, le=10000
@@ -379,8 +391,8 @@ class AdvancedScreenerRequest(BaseModel):
     market_regime: MarketRegime = Field(
         MarketRegime.ANY, description="Market regime filter (VIX-based)"
     )
-    universe: str = Field(
-        "popular", description="Stock universe to screen (popular, sp500_sample, tech, nasdaq, nyse, all)"
+    universe: StockUniverse = Field(
+        StockUniverse.POPULAR, description="Stock universe to screen"
     )
     page: int = Field(1, description="Page number for pagination", ge=1)
     page_size: int = Field(50, description="Results per page", ge=1, le=100)

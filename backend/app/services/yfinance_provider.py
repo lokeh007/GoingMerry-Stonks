@@ -199,10 +199,15 @@ class YFinanceProvider:
         This method fetches fundamental metrics needed for Lynch screening:
         - PEG ratio
         - EPS growth rate
+        - Revenue growth rate
+        - PE ratio
         - Debt-to-equity ratio
         - Return on equity (ROE)
         - Institutional ownership
+        - Current ratio
         - Market cap
+        - Current price
+        - 52-week low/high
         - Company name and sector
 
         Args:
@@ -237,11 +242,15 @@ class YFinanceProvider:
                 "market_cap": info.get("marketCap"),
                 "peg_ratio": info.get("pegRatio") or info.get("trailingPegRatio"),
                 "eps_growth": self._calculate_eps_growth(stock),
+                "revenue_growth": self._calculate_revenue_growth(stock),
                 "debt_to_equity": info.get("debtToEquity"),
                 "roe": info.get("returnOnEquity"),
                 "institutional_ownership": info.get("heldPercentInstitutions"),
                 "current_ratio": info.get("currentRatio"),
                 "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+                "pe_ratio": self._calculate_pe_ratio(info),
+                "week_52_low": info.get("fiftyTwoWeekLow"),
+                "week_52_high": info.get("fiftyTwoWeekHigh"),
                 "timestamp": datetime.now().isoformat(),
             }
 
@@ -264,12 +273,12 @@ class YFinanceProvider:
 
             # Log summary
             available_metrics = sum(
-                1 for k, v in fundamentals.items() if v is not None and k != "timestamp"
+                1 for k, v in fundamentals.items() if v is not None and k not in ["timestamp", "ticker"]
             )
             logger.info(
-                f"Fetched fundamentals for {ticker}: {available_metrics}/9 metrics available "
-                f"(PEG={fundamentals['peg_ratio']}, EPS Growth={fundamentals['eps_growth']}%, "
-                f"D/E={fundamentals['debt_to_equity']}, ROE={fundamentals['roe']}%)"
+                f"Fetched fundamentals for {ticker}: {available_metrics}/13 metrics available "
+                f"(PE={fundamentals['pe_ratio']}, PEG={fundamentals['peg_ratio']}, "
+                f"EPS Growth={fundamentals['eps_growth']}%, Rev Growth={fundamentals['revenue_growth']}%)"
             )
 
             return fundamentals
@@ -338,6 +347,114 @@ class YFinanceProvider:
             logger.debug(f"Error calculating EPS growth: {e}")
             return None
 
+    def _calculate_pe_ratio(self, info: dict) -> Optional[float]:
+        """
+        Calculate PE ratio from price and EPS data.
+
+        Args:
+            info: Stock info dict from yfinance
+
+        Returns:
+            PE ratio, or None if unavailable
+        """
+        try:
+            # Try to get trailing PE directly
+            pe_ratio = info.get("trailingPE") or info.get("forwardPE")
+            if pe_ratio is not None:
+                return round(pe_ratio, 2)
+
+            # Calculate from price and EPS if not available
+            current_price = info.get("currentPrice") or info.get("regularMarketPrice")
+            trailing_eps = info.get("trailingEps")
+
+            if current_price and trailing_eps and trailing_eps > 0:
+                pe_ratio = current_price / trailing_eps
+                return round(pe_ratio, 2)
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error calculating PE ratio: {e}")
+            return None
+
+    def _calculate_revenue_growth(self, stock: yf.Ticker) -> Optional[float]:
+        """
+        Calculate revenue growth rate from financial statements.
+
+        Uses yfinance's financials to calculate year-over-year revenue growth.
+        Attempts:
+        1. Quarterly financials (trailing 4 quarters vs previous 4 quarters)
+        2. Annual financials (most recent year vs previous year)
+
+        Args:
+            stock: yfinance Ticker object
+
+        Returns:
+            Revenue growth rate as percentage, or None if unavailable
+        """
+        try:
+            # Try quarterly financials first
+            quarterly_financials = stock.quarterly_financials
+            if quarterly_financials is not None and not quarterly_financials.empty:
+                # Look for "Total Revenue" or similar in the quarterly financials
+                revenue_rows = [
+                    row for row in quarterly_financials.index
+                    if 'Revenue' in str(row) and 'Total' in str(row)
+                ]
+
+                if not revenue_rows:
+                    # Fallback: just look for "Revenue"
+                    revenue_rows = [
+                        row for row in quarterly_financials.index
+                        if 'Revenue' in str(row)
+                    ]
+
+                if revenue_rows and len(quarterly_financials.columns) >= 8:
+                    revenue_row = revenue_rows[0]  # Use first revenue metric found
+                    revenue_values = quarterly_financials.loc[revenue_row]
+
+                    # Compare trailing 4 quarters to previous 4 quarters
+                    recent_revenue = revenue_values.iloc[:4].sum()
+                    previous_revenue = revenue_values.iloc[4:8].sum()
+
+                    if previous_revenue != 0 and not pd.isna(previous_revenue):
+                        growth_rate = ((recent_revenue - previous_revenue) / abs(previous_revenue)) * 100
+                        return round(growth_rate, 2)
+
+            # Try annual financials as fallback
+            annual_financials = stock.financials
+            if annual_financials is not None and not annual_financials.empty:
+                # Look for "Total Revenue" in annual financials
+                revenue_rows = [
+                    row for row in annual_financials.index
+                    if 'Revenue' in str(row) and 'Total' in str(row)
+                ]
+
+                if not revenue_rows:
+                    revenue_rows = [
+                        row for row in annual_financials.index
+                        if 'Revenue' in str(row)
+                    ]
+
+                if revenue_rows and len(annual_financials.columns) >= 2:
+                    revenue_row = revenue_rows[0]
+                    revenue_values = annual_financials.loc[revenue_row]
+
+                    recent_revenue = revenue_values.iloc[0]
+                    previous_revenue = revenue_values.iloc[1]
+
+                    if previous_revenue != 0 and not pd.isna(previous_revenue):
+                        growth_rate = ((recent_revenue - previous_revenue) / abs(previous_revenue)) * 100
+                        return round(growth_rate, 2)
+
+            # Insufficient data - not a critical error, just return None
+            logger.debug("Insufficient revenue history to calculate revenue growth")
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error calculating revenue growth: {e}")
+            return None
+
     @rate_limit(min_interval=0.2)
     def get_vix_data(self) -> Dict[str, Any]:
         """
@@ -394,122 +511,94 @@ class YFinanceProvider:
             logger.error(f"Error fetching VIX data: {e}")
             raise ValueError(f"Failed to fetch VIX data: {str(e)}")
 
-    def get_stock_universe(
-        self, exchange: str = "NASDAQ", limit: Optional[int] = None
-    ) -> List[str]:
+    def get_stock_universe(self, universe_type: str = "popular") -> List[str]:
         """
-        Get list of available tickers from specified exchange.
+        Get a list of stock tickers to screen.
+
+        Returns a predefined universe of stocks based on the type specified.
 
         Args:
-            exchange: Exchange name (NASDAQ, NYSE, ALL)
-            limit: Maximum number of tickers to return (None = all)
+            universe_type: Type of stock universe to return. Options:
+                - "popular": Popular large-cap stocks (default)
+                - "sp500_sample": Sample of S&P 500 stocks
+                - "tech": Technology sector stocks
+                - "nasdaq": NASDAQ-listed stocks (legacy support)
+                - "nyse": NYSE-listed stocks (legacy support)
+                - "all": All available stocks (legacy support)
 
         Returns:
-            List of ticker symbols
+            List of stock ticker symbols
 
-        Note:
-            This is a simplified implementation. For production, consider using
-            a dedicated ticker database or API.
+        Example:
+            >>> provider = YFinanceProvider()
+            >>> tickers = provider.get_stock_universe("popular")
+            >>> len(tickers)
+            46
         """
-        try:
-            logger.info(f"Fetching stock universe for {exchange}")
+        # Predefined stock universes for screening
+        universes = {
+            "popular": [
+                # Technology
+                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
+                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
+                # Finance
+                "JPM", "BAC", "WFC", "GS", "MS", "C", "BLK", "SCHW",
+                # Healthcare
+                "JNJ", "UNH", "PFE", "ABBV", "TMO", "LLY", "MRK", "ABT",
+                # Consumer
+                "AMZN", "WMT", "HD", "MCD", "NKE", "SBUX", "TGT", "COST",
+                # Industrial
+                "BA", "CAT", "HON", "MMM", "GE", "RTX",
+            ],
+            "sp500_sample": [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK.B",
+                "UNH", "XOM", "JNJ", "JPM", "V", "PG", "MA", "HD", "CVX", "LLY",
+                "ABBV", "MRK", "PEP", "COST", "AVGO", "WMT", "ADBE", "CRM", "MCD",
+                "CSCO", "ACN", "NFLX", "TMO", "ABT", "DHR", "NKE", "BAC", "DIS",
+                "TXN", "VZ", "INTC", "PM", "UPS",
+            ],
+            "tech": [
+                "AAPL", "MSFT", "GOOGL", "META", "NVDA", "TSLA", "AMD", "INTC",
+                "AVGO", "ADBE", "CRM", "ORCL", "CSCO", "QCOM", "NOW", "AMAT",
+                "NFLX", "UBER", "SNOW", "PLTR", "COIN", "SQ", "SHOP", "ZM",
+                "TWLO", "CRWD", "NET", "DDOG", "MDB", "FTNT", "PANW",
+            ],
+            # Legacy support for exchange-based filtering
+            "nasdaq": [
+                "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "TSLA", "NFLX",
+                "ADBE", "AVGO", "CSCO", "INTC", "AMD", "QCOM", "TXN", "INTU",
+                "AMAT", "MU", "ADI", "LRCX", "KLAC", "MRVL", "SNPS", "CDNS",
+                "FTNT", "WDAY", "TEAM", "PANW", "CRWD", "ZS", "DDOG", "NET",
+                "SNOW", "PLTR", "SOFI",
+            ],
+            "nyse": [
+                "JPM", "BAC", "WFC", "C", "GS", "MS", "AXP", "V", "MA", "PYPL",
+                "BLK", "SCHW", "USB", "PNC", "TFC", "BK", "STT", "WMT", "HD",
+                "CVS", "UNH", "JNJ", "PFE", "ABBV", "LLY", "MRK", "TMO", "ABT",
+                "DHR", "BMY", "AMGN", "GILD", "VRTX", "REGN",
+            ],
+        }
 
-            # Common popular stocks across exchanges (starter set)
-            # In production, this would query a ticker database
-            nasdaq_stocks = [
-                "AAPL",
-                "MSFT",
-                "GOOGL",
-                "AMZN",
-                "META",
-                "NVDA",
-                "TSLA",
-                "NFLX",
-                "ADBE",
-                "AVGO",
-                "CSCO",
-                "INTC",
-                "AMD",
-                "QCOM",
-                "TXN",
-                "INTU",
-                "AMAT",
-                "MU",
-                "ADI",
-                "LRCX",
-                "KLAC",
-                "MRVL",
-                "SNPS",
-                "CDNS",
-                "FTNT",
-                "WDAY",
-                "TEAM",
-                "PANW",
-                "CRWD",
-                "ZS",
-                "DDOG",
-                "NET",
-                "SNOW",
-                "PLTR",
-                "SOFI",
-            ]
+        # Handle legacy "ALL" exchange type
+        if universe_type.lower() == "all":
+            nasdaq_stocks = universes.get("nasdaq", [])
+            nyse_stocks = universes.get("nyse", [])
+            all_stocks = list(set(nasdaq_stocks + nyse_stocks))
+            logger.info(f"Returning all stock universe with {len(all_stocks)} tickers")
+            return sorted(all_stocks)
 
-            nyse_stocks = [
-                "JPM",
-                "BAC",
-                "WFC",
-                "C",
-                "GS",
-                "MS",
-                "AXP",
-                "V",
-                "MA",
-                "PYPL",
-                "BLK",
-                "SCHW",
-                "USB",
-                "PNC",
-                "TFC",
-                "BK",
-                "STT",
-                "WMT",
-                "HD",
-                "CVS",
-                "UNH",
-                "JNJ",
-                "PFE",
-                "ABBV",
-                "LLY",
-                "MRK",
-                "TMO",
-                "ABT",
-                "DHR",
-                "BMY",
-                "AMGN",
-                "GILD",
-                "VRTX",
-                "REGN",
-            ]
+        if universe_type in universes:
+            logger.info(
+                f"Returning {universe_type} stock universe with "
+                f"{len(universes[universe_type])} tickers"
+            )
+            return universes[universe_type]
 
-            if exchange.upper() == "NASDAQ":
-                tickers = nasdaq_stocks
-            elif exchange.upper() == "NYSE":
-                tickers = nyse_stocks
-            elif exchange.upper() == "ALL":
-                tickers = list(set(nasdaq_stocks + nyse_stocks))
-            else:
-                raise ValueError(f"Unknown exchange: {exchange}")
-
-            if limit:
-                tickers = tickers[:limit]
-
-            logger.info(f"Returning {len(tickers)} tickers from {exchange}")
-
-            return sorted(tickers)
-
-        except Exception as e:
-            logger.error(f"Error fetching stock universe: {e}")
-            raise ValueError(f"Failed to fetch stock universe: {str(e)}")
+        # Default to popular stocks
+        logger.warning(
+            f"Unknown universe type '{universe_type}', returning popular stocks"
+        )
+        return universes["popular"]
 
     # Private helper methods
 
