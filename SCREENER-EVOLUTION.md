@@ -147,6 +147,29 @@ The screener uses a **funnel approach**:
 
 **Performance Impact**: 70-80% reduction in response time (15-30s → 3-6s for 50 stocks)
 
+#### 2.6 Code Quality Improvements (Phase 2.3) ✅
+- [x] **CRITICAL**: Fix null check logic filtering out stocks with 0 values
+  - Changed from `not financials.get()` to `financials.get() is None`
+  - Allows stocks with 0 PEG ratio or 0 EPS growth to pass through
+  - Fixes data loss bug affecting turnaround stocks and other categories
+  - Location: `backend/app/routers/screener.py:220, 961`
+- [x] **MEDIUM**: Move criteria key mapping to module-level constant
+  - Eliminates dictionary recreation on every request
+  - Reduced from 16 entries to 2 entries (removed identity mappings)
+  - Performance: No more allocation overhead per request
+  - Location: `backend/app/routers/screener.py:45-48, 749`
+- [x] **LOW**: Remove unused `vix` parameter from market regime filter
+  - Cleaned up function signature and call site
+  - Added enhanced docstring with Args and Returns
+  - Location: `backend/app/routers/screener.py:1005, 1165`
+- [x] Update `backend/SCREENER-ISSUES.md` to document resolutions
+  - Added Issues #8, #9, #10 to Resolved Issues section
+  - All improvements credited to Copilot from PR #7
+
+**Impact**: Fixed critical data loss bug, improved performance, cleaner code
+
+**Credit**: All improvements identified by Copilot in PR #7 (now closed)
+
 ---
 
 ### 📋 Phase 3: Frontend - Basic UI

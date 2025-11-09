@@ -32,6 +32,24 @@
   - **Location**: `backend/app/services/yfinance_provider.py:20-50, 72, 151, 194`
   - **Commit**: Phase 2.1 Performance Improvements
 
+### CRITICAL Priority (Code Quality)
+- **Issue #8**: Null check logic filtering out stocks with 0 values ✅ RESOLVED
+  - **Problem**: Using `not financials.get("peg_ratio")` returns True for both None AND 0
+    - Stocks with 0 PEG ratio (valid data) were incorrectly filtered out
+    - Same issue with 0 EPS growth (valid for some stock categories)
+    - False positives causing valid stocks to be excluded from results
+  - **Solution**: Changed to explicit `is None` checks
+    - `if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:`
+    - Allows 0 values to pass through (they're valid data points)
+    - Only filters when data is actually missing
+  - **Impact**:
+    - Fixes data loss bug affecting stock results
+    - Turnaround stocks with negative/zero growth now included correctly
+    - More accurate screening results
+  - **Location**: `backend/app/routers/screener.py:220, 961`
+  - **Commit**: Phase 2.3 Code Quality Improvements
+  - **Credit**: Issue identified in PR #7 by Copilot
+
 ### CRITICAL Priority (Performance)
 - **Issue #7**: Sequential technical analysis causing 15-30 second response times ✅ RESOLVED
   - **Problem**: Phase 2 processed stocks sequentially with 2-3 API calls per stock
@@ -50,6 +68,42 @@
     - Maintains rate limiting protection per worker
   - **Location**: `backend/app/routers/screener.py:617-892, 1031-1044`
   - **Commit**: Phase 2.2 Concurrent Technical Analysis
+
+### MEDIUM Priority (Performance)
+- **Issue #9**: Inline dictionary recreation on every request ✅ RESOLVED
+  - **Problem**: `_criteria_key_map` dictionary (16 entries) was recreated on every API call
+    - Unnecessary memory allocation and CPU cycles
+    - Includes identity mappings (e.g., "min_peg_ratio": "min_peg_ratio") that waste space
+    - Performance impact compounds with high request volume
+  - **Solution**: Moved to module-level constant `_CRITERIA_KEY_MAP`
+    - Created once at module load time
+    - Removed all identity mappings (only keeps transformations)
+    - Reduced from 16 entries to 2 entries
+  - **Impact**:
+    - Eliminates dictionary creation overhead per request
+    - Reduces memory footprint (14 fewer dict entries)
+    - Cleaner code with explicit transformation logic
+  - **Location**: `backend/app/routers/screener.py:45-48, 749`
+  - **Commit**: Phase 2.3 Code Quality Improvements
+  - **Credit**: Issue identified in PR #7 by Copilot
+
+### LOW Priority (Code Cleanup)
+- **Issue #10**: Unused `vix` parameter in market regime filter ✅ RESOLVED
+  - **Problem**: Function `_passes_market_regime_filter()` accepted `vix: float` parameter but never used it
+    - Only `current_regime` string was used in function body
+    - Misleading function signature
+    - Unnecessary parameter passing overhead
+  - **Solution**: Removed unused parameter from function signature and call site
+    - Updated function: `def _passes_market_regime_filter(current_regime: str, required_regime: MarketRegime)`
+    - Updated call: `_passes_market_regime_filter(current_regime, request.market_regime)`
+    - Added enhanced docstring with Args and Returns sections
+  - **Impact**:
+    - Cleaner function signature
+    - Improved code readability
+    - Slightly reduced function call overhead
+  - **Location**: `backend/app/routers/screener.py:1005, 1165`
+  - **Commit**: Phase 2.3 Code Quality Improvements
+  - **Credit**: Issue identified in PR #7 by Copilot
 
 ---
 

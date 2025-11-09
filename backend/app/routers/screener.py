@@ -39,6 +39,14 @@ from ..financial_models.patterns import get_pattern_detector
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# Module-level constants for field name mapping
+# Maps request model field names to expected screening reason field names
+# Only includes fields that need transformation (identity mappings removed for performance)
+_CRITERIA_KEY_MAP = {
+    "min_eps_growth": "min_earnings_growth",
+    "max_eps_growth": "max_earnings_growth",
+}
+
 # Initialize router
 router = APIRouter(
     prefix="/screener",
@@ -208,8 +216,8 @@ async def get_lynch_fast_growers(
                 # Fetch fundamental data
                 financials = market_data.get_stock_financials(ticker)
 
-                # Skip if essential data is missing
-                if not financials.get("peg_ratio") or not financials.get("eps_growth"):
+                # Skip if essential data is missing (use 'is None' to allow 0 values)
+                if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:
                     logger.debug(f"Skipping {ticker}: Missing PEG or EPS growth data")
                     continue
 
@@ -733,29 +741,12 @@ def _process_single_stock_technical(
         # Calculate score
         score = _calculate_lynch_score(financials)
 
-        # Generate reasons
-        _criteria_key_map = {
-            "min_eps_growth": "min_earnings_growth",
-            "max_eps_growth": "max_earnings_growth",
-            "min_peg_ratio": "min_peg_ratio",
-            "max_peg_ratio": "max_peg_ratio",
-            "min_pe_ratio": "min_pe_ratio",
-            "max_pe_ratio": "max_pe_ratio",
-            "min_revenue_growth": "min_revenue_growth",
-            "max_revenue_growth": "max_revenue_growth",
-            "min_debt_to_equity": "min_debt_to_equity",
-            "max_debt_to_equity": "max_debt_to_equity",
-            "min_current_ratio": "min_current_ratio",
-            "max_current_ratio": "max_current_ratio",
-            "min_roe": "min_roe",
-            "max_roe": "max_roe",
-            "min_institutional_ownership": "min_institutional_ownership",
-            "max_institutional_ownership": "max_institutional_ownership",
-        }
+        # Generate reasons using module-level criteria mapping
         raw_criteria = request.fundamental_filters.model_dump()
         criteria = {}
         for k, v in raw_criteria.items():
-            mapped_key = _criteria_key_map.get(k, k)
+            # Use module-level constant for field name transformation
+            mapped_key = _CRITERIA_KEY_MAP.get(k, k)
             criteria[mapped_key] = v
         reasons = _generate_screening_reasons(financials, criteria)
 
@@ -966,8 +957,8 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
         fundamental_passed = []
         for ticker, financials in financials_results:
             try:
-                # Skip if missing required fields
-                if not financials.get("peg_ratio") or not financials.get("eps_growth"):
+                # Skip if missing required fields (use 'is None' to allow 0 values)
+                if financials.get("peg_ratio") is None or financials.get("eps_growth") is None:
                     continue
 
                 # Apply fundamental filters
@@ -1011,7 +1002,7 @@ async def advanced_screener(request: AdvancedScreenerRequest = Body(...)):
                 current_regime = vix_data["regime"]
 
                 # Filter by market regime
-                if not _passes_market_regime_filter(current_vix, current_regime, request.market_regime):
+                if not _passes_market_regime_filter(current_regime, request.market_regime):
                     logger.info(
                         f"Market regime filter failed: current={current_regime}, "
                         f"required={request.market_regime.value}"
@@ -1171,8 +1162,17 @@ def _passes_macd_filter(indicators: dict, condition: MACDCondition) -> bool:
     return True
 
 
-def _passes_market_regime_filter(vix: float, current_regime: str, required_regime: MarketRegime) -> bool:
-    """Check if current market regime matches required regime."""
+def _passes_market_regime_filter(current_regime: str, required_regime: MarketRegime) -> bool:
+    """
+    Check if current market regime matches required regime.
+
+    Args:
+        current_regime: Current market regime classification (from VIX data)
+        required_regime: Required market regime from request filters
+
+    Returns:
+        True if regime matches or no filter applied, False otherwise
+    """
     if required_regime == MarketRegime.ANY:
         return True
     elif required_regime == MarketRegime.LOW_FEAR:
