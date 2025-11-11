@@ -17,11 +17,33 @@ import {
   DEFAULT_FUNDAMENTAL_FILTERS,
   DEFAULT_TECHNICAL_FILTERS,
 } from '../types/screener';
-import { runAdvancedScreener, parseScreenerURLParams, buildScreenerURLParams } from '../utils/screenerApi';
+import {
+  runAdvancedScreener,
+  runSmartMoneyScreener,
+  runUndiscoveredScreener,
+  runCoiledSpringScreener,
+  parseScreenerURLParams,
+  buildScreenerURLParams,
+} from '../utils/screenerApi';
 import './StockScreenerPage.css';
 
+// Screener type enum
+type ScreenerType = 'lynch' | 'smart_money' | 'undiscovered' | 'coiled_spring';
+
+// Screener descriptions
+const SCREENER_DESCRIPTIONS: Record<ScreenerType, string> = {
+  lynch:
+    "🏛️ Peter Lynch's fundamental screening strategies for finding high-quality growth stocks at reasonable prices. Categories include Fast Growers, Stalwarts, and more.",
+  smart_money:
+    "💰 Follow the 'smart money' by tracking unusual options activity. Find stocks where institutions are placing large, aggressive bets before major moves.",
+  undiscovered:
+    "🔍 Lynch-inspired search for hidden gems off Wall Street's radar. Low institutional ownership + minimal analyst coverage + insider buying = potential tenbaggers.",
+  coiled_spring:
+    "🎯 Bulkowski-inspired volatility screener. Find stocks in extreme consolidation (NR7 pattern + low volatility) ready to breakout. The tighter the coil, the bigger the spring.",
+};
+
 // Category descriptions for each Lynch category
-const CATEGORY_DESCRIPTIONS: Record<LynchCategory, string> = {
+const LYNCH_CATEGORY_DESCRIPTIONS: Record<LynchCategory, string> = {
   [LynchCategory.FAST_GROWERS]:
     "🚀 Fast Growers are small, aggressive companies growing at 20-25% annually. Lynch's most profitable category with potential for 'tenbaggers' but requires careful monitoring of growth sustainability.",
   [LynchCategory.STALWARTS]:
@@ -39,6 +61,9 @@ const CATEGORY_DESCRIPTIONS: Record<LynchCategory, string> = {
 const StockScreenerPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Screener type state
+  const [screenerType, setScreenerType] = useState<ScreenerType>('lynch');
+
   // State management
   const [request, setRequest] = useState<AdvancedScreenerRequest>({
     lynch_category: LynchCategory.FAST_GROWERS,
@@ -48,6 +73,29 @@ const StockScreenerPage: React.FC = () => {
     universe: 'popular',
     page: 1,
     page_size: 50,
+  });
+
+  // Smart Money screener params
+  const [smartMoneyParams, setSmartMoneyParams] = useState({
+    min_call_to_put_ratio: 3.0,
+    unusual_volume_multiplier: 2.0,
+    universe: 'popular',
+  });
+
+  // Undiscovered screener params
+  const [undiscoveredParams, setUndiscoveredParams] = useState({
+    max_institutional_ownership: 25.0,
+    max_analyst_coverage: 5,
+    require_insider_buying: true,
+    universe: 'popular',
+  });
+
+  // Coiled Spring screener params
+  const [coiledSpringParams, setCoiledSpringParams] = useState({
+    max_volatility_30d: 15.0,
+    require_nr7: true,
+    min_percentile_rank: 10.0,
+    universe: 'popular',
   });
 
   const [response, setResponse] = useState<ScreenerResponse | null>(null);
@@ -70,18 +118,39 @@ const StockScreenerPage: React.FC = () => {
     setError(null);
 
     try {
-      const result = await runAdvancedScreener(request);
-      setResponse(result);
+      let result: ScreenerResponse;
 
-      // Update URL with current filters for sharing
-      const urlParams = buildScreenerURLParams(request);
-      setSearchParams(urlParams);
+      // Call different API based on screener type
+      if (screenerType === 'lynch') {
+        result = await runAdvancedScreener(request);
+        // Update URL with current filters for sharing
+        const urlParams = buildScreenerURLParams(request);
+        setSearchParams(urlParams);
+      } else if (screenerType === 'smart_money') {
+        result = await runSmartMoneyScreener(smartMoneyParams);
+      } else if (screenerType === 'undiscovered') {
+        result = await runUndiscoveredScreener(undiscoveredParams);
+      } else {
+        // coiled_spring
+        result = await runCoiledSpringScreener(coiledSpringParams);
+      }
+
+      setResponse(result);
     } catch (err: any) {
       console.error('Screening error:', err);
       setError(err.response?.data?.detail || 'Failed to run screener. Please try again.');
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Handle screener type change
+   */
+  const handleScreenerTypeChange = (type: ScreenerType) => {
+    setScreenerType(type);
+    setResponse(null); // Clear results when switching screeners
+    setError(null);
   };
 
   /**
@@ -124,25 +193,265 @@ const StockScreenerPage: React.FC = () => {
         <div>
           <h1 className="screener-title">Stock Screener</h1>
           <p className="screener-subtitle">
-            Find high-potential stocks using Peter Lynch fundamentals
+            Find high-potential stocks using multiple screening strategies
           </p>
         </div>
       </div>
 
-      {/* Section 1: Lynch Fundamental Filters */}
-      <div className="screener-section">
-        <LynchFilters
-          request={request}
-          onFilterChange={handleFilterChange}
-          onRunScreen={handleRunScreen}
-          onReset={handleResetFilters}
-          loading={loading}
-        />
+      {/* Screener Type Selector */}
+      <div className="screener-type-selector">
+        <button
+          className={`type-tab ${screenerType === 'lynch' ? 'active' : ''}`}
+          onClick={() => handleScreenerTypeChange('lynch')}
+        >
+          🏛️ Lynch Fundamentals
+        </button>
+        <button
+          className={`type-tab ${screenerType === 'smart_money' ? 'active' : ''}`}
+          onClick={() => handleScreenerTypeChange('smart_money')}
+        >
+          💰 Smart Money
+        </button>
+        <button
+          className={`type-tab ${screenerType === 'undiscovered' ? 'active' : ''}`}
+          onClick={() => handleScreenerTypeChange('undiscovered')}
+        >
+          🔍 The Undiscovered
+        </button>
+        <button
+          className={`type-tab ${screenerType === 'coiled_spring' ? 'active' : ''}`}
+          onClick={() => handleScreenerTypeChange('coiled_spring')}
+        >
+          🎯 The Coiled Spring
+        </button>
+      </div>
 
-        {/* Category Description */}
-        <div className="category-description">
-          {CATEGORY_DESCRIPTIONS[request.lynch_category]}
-        </div>
+      {/* Screener Description */}
+      <div className="screener-description-box">
+        {SCREENER_DESCRIPTIONS[screenerType]}
+      </div>
+
+      {/* Conditional Filters Based on Screener Type */}
+      <div className="screener-section">
+        {screenerType === 'lynch' && (
+          <>
+            <LynchFilters
+              request={request}
+              onFilterChange={handleFilterChange}
+              onRunScreen={handleRunScreen}
+              onReset={handleResetFilters}
+              loading={loading}
+            />
+            <div className="category-description">
+              {LYNCH_CATEGORY_DESCRIPTIONS[request.lynch_category]}
+            </div>
+          </>
+        )}
+
+        {screenerType === 'smart_money' && (
+          <div className="simple-filters">
+            <h3>Options Flow Filters</h3>
+            <div className="filter-grid">
+              <div className="filter-item">
+                <label>Min Call/Put Ratio:</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={smartMoneyParams.min_call_to_put_ratio}
+                  onChange={(e) =>
+                    setSmartMoneyParams({
+                      ...smartMoneyParams,
+                      min_call_to_put_ratio: parseFloat(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Bullish conviction threshold (default: 3.0)</small>
+              </div>
+              <div className="filter-item">
+                <label>Volume Multiplier:</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={smartMoneyParams.unusual_volume_multiplier}
+                  onChange={(e) =>
+                    setSmartMoneyParams({
+                      ...smartMoneyParams,
+                      unusual_volume_multiplier: parseFloat(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Unusual volume threshold (default: 2.0x average)</small>
+              </div>
+              <div className="filter-item">
+                <label>Stock Universe:</label>
+                <select
+                  value={smartMoneyParams.universe}
+                  onChange={(e) =>
+                    setSmartMoneyParams({
+                      ...smartMoneyParams,
+                      universe: e.target.value,
+                    })
+                  }
+                  disabled={loading}
+                >
+                  <option value="popular">Popular (46 stocks)</option>
+                  <option value="sp500_sample">S&P 500 Sample (41 stocks)</option>
+                  <option value="tech">Technology (31 stocks)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {screenerType === 'undiscovered' && (
+          <div className="simple-filters">
+            <h3>Undiscovered Filters</h3>
+            <div className="filter-grid">
+              <div className="filter-item">
+                <label>Max Institutional Ownership (%):</label>
+                <input
+                  type="number"
+                  step="1"
+                  value={undiscoveredParams.max_institutional_ownership}
+                  onChange={(e) =>
+                    setUndiscoveredParams({
+                      ...undiscoveredParams,
+                      max_institutional_ownership: parseFloat(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Maximum institutional ownership percentage (default: 25%)</small>
+              </div>
+              <div className="filter-item">
+                <label>Max Analyst Coverage:</label>
+                <input
+                  type="number"
+                  step="1"
+                  value={undiscoveredParams.max_analyst_coverage}
+                  onChange={(e) =>
+                    setUndiscoveredParams({
+                      ...undiscoveredParams,
+                      max_analyst_coverage: parseInt(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Maximum number of analysts (default: 5)</small>
+              </div>
+              <div className="filter-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={undiscoveredParams.require_insider_buying}
+                    onChange={(e) =>
+                      setUndiscoveredParams({
+                        ...undiscoveredParams,
+                        require_insider_buying: e.target.checked,
+                      })
+                    }
+                    disabled={loading}
+                  />
+                  Require Insider Buying
+                </label>
+                <small>Only show stocks with recent insider net purchases</small>
+              </div>
+              <div className="filter-item">
+                <label>Stock Universe:</label>
+                <select
+                  value={undiscoveredParams.universe}
+                  onChange={(e) =>
+                    setUndiscoveredParams({
+                      ...undiscoveredParams,
+                      universe: e.target.value,
+                    })
+                  }
+                  disabled={loading}
+                >
+                  <option value="popular">Popular (46 stocks)</option>
+                  <option value="sp500_sample">S&P 500 Sample (41 stocks)</option>
+                  <option value="tech">Technology (31 stocks)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {screenerType === 'coiled_spring' && (
+          <div className="simple-filters">
+            <h3>Coiled Spring Filters</h3>
+            <div className="filter-grid">
+              <div className="filter-item">
+                <label>Max 30-Day Volatility (%):</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={coiledSpringParams.max_volatility_30d}
+                  onChange={(e) =>
+                    setCoiledSpringParams({
+                      ...coiledSpringParams,
+                      max_volatility_30d: parseFloat(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Maximum historical volatility threshold (default: 15%)</small>
+              </div>
+              <div className="filter-item">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={coiledSpringParams.require_nr7}
+                    onChange={(e) =>
+                      setCoiledSpringParams({
+                        ...coiledSpringParams,
+                        require_nr7: e.target.checked,
+                      })
+                    }
+                    disabled={loading}
+                  />
+                  Require NR7 Pattern
+                </label>
+                <small>Only show stocks with narrowest range of last 7 days</small>
+              </div>
+              <div className="filter-item">
+                <label>Max Volatility Percentile (%):</label>
+                <input
+                  type="number"
+                  step="1"
+                  value={coiledSpringParams.min_percentile_rank}
+                  onChange={(e) =>
+                    setCoiledSpringParams({
+                      ...coiledSpringParams,
+                      min_percentile_rank: parseFloat(e.target.value),
+                    })
+                  }
+                  disabled={loading}
+                />
+                <small>Maximum percentile rank (lower = more compressed, default: 10%)</small>
+              </div>
+              <div className="filter-item">
+                <label>Stock Universe:</label>
+                <select
+                  value={coiledSpringParams.universe}
+                  onChange={(e) =>
+                    setCoiledSpringParams({
+                      ...coiledSpringParams,
+                      universe: e.target.value,
+                    })
+                  }
+                  disabled={loading}
+                >
+                  <option value="popular">Popular (46 stocks)</option>
+                  <option value="sp500_sample">S&P 500 Sample (41 stocks)</option>
+                  <option value="tech">Technology (31 stocks)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Action Buttons */}

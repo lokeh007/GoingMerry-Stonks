@@ -310,6 +310,530 @@ async def get_lynch_fast_growers(
 
 
 @router.get(
+    "/smart-money",
+    response_model=ScreenerResponse,
+    summary="Smart Money Screener (Options-Driven)",
+    description="Find stocks where institutional 'smart money' is placing large, aggressive option bets.",
+)
+async def get_smart_money(
+    min_call_to_put_ratio: float = Query(
+        3.0,
+        description="Minimum call-to-put volume ratio (bullish conviction)",
+        ge=1.0,
+        le=20.0,
+    ),
+    unusual_volume_multiplier: float = Query(
+        2.0,
+        description="Multiplier for unusual volume detection (current > avg * multiplier)",
+        ge=1.5,
+        le=10.0,
+    ),
+    universe: StockUniverse = Query(
+        StockUniverse.POPULAR,
+        description="Stock universe to screen",
+    ),
+):
+    """
+    Smart Money Screener - Options-Driven.
+
+    This screener follows the "footprints" of large traders who have access to information
+    we don't. It uses options flow data to find stocks where institutions are placing
+    aggressive bets, often before a big move.
+
+    **Philosophy:**
+    Follow the smart money by identifying unusual options activity that indicates
+    strong institutional conviction.
+
+    **Key Filters:**
+    - **High Call-to-Put Ratio**: Call Volume > (Put Volume * min_call_to_put_ratio)
+    - **Unusual Volume**: Total Option Volume > (30-Day Average * unusual_volume_multiplier)
+
+    **Note:**
+    Sweep detection requires premium data and is not available with free yfinance data.
+
+    **Parameters:**
+    - **min_call_to_put_ratio**: Minimum ratio indicating bullish conviction (default: 3.0)
+    - **unusual_volume_multiplier**: Threshold for unusual volume (default: 2.0)
+    - **universe**: Stock universe to screen (popular, sp500_sample, tech)
+
+    **Returns:**
+    List of stocks ranked by options flow signals (call/put ratio + unusual volume).
+    """
+    try:
+        start_time = datetime.now()
+        logger.info(
+            f"Starting Smart Money screener: "
+            f"C/P Ratio>={min_call_to_put_ratio}, "
+            f"Volume Mult>={unusual_volume_multiplier}"
+        )
+
+        # Initialize provider
+        yf_provider = YFinanceProvider()
+
+        # Get stock universe
+        stock_universe = yf_provider.get_stock_universe(universe)
+        logger.info(f"Screening {len(stock_universe)} stocks from {universe} universe")
+
+        # Screen stocks
+        results = []
+        failed_tickers = []
+
+        for ticker in stock_universe:
+            try:
+                # Get options flow metrics
+                options_flow = yf_provider.get_options_flow_metrics(ticker)
+
+                # Skip if no options data
+                if options_flow.get("call_volume") is None or options_flow.get("put_volume") is None:
+                    logger.debug(f"{ticker}: No options data available")
+                    continue
+
+                # Check filters
+                call_to_put = options_flow.get("call_to_put_ratio")
+                is_unusual = options_flow.get("is_unusual_volume", False)
+
+                # Filter: High call-to-put ratio
+                if call_to_put is None or call_to_put < min_call_to_put_ratio:
+                    logger.debug(f"{ticker}: Failed C/P ratio check ({call_to_put})")
+                    continue
+
+                # Filter: Unusual volume
+                total_vol = options_flow.get("total_option_volume", 0)
+                avg_vol = options_flow.get("avg_30day_volume", 0)
+
+                if avg_vol > 0 and total_vol < (avg_vol * unusual_volume_multiplier):
+                    logger.debug(f"{ticker}: Failed unusual volume check ({total_vol} vs {avg_vol})")
+                    continue
+
+                # Get basic fundamentals for display
+                fundamentals = yf_provider.get_fundamentals(ticker)
+
+                # Calculate smart money score (0-100)
+                score = _calculate_smart_money_score(options_flow, min_call_to_put_ratio)
+
+                # Create result
+                result = StockScreenerResult(
+                    ticker=ticker.upper(),
+                    company_name=fundamentals.get("company_name", ticker),
+                    sector=fundamentals.get("sector", "Unknown"),
+                    current_price=fundamentals.get("current_price"),
+                    market_cap=fundamentals.get("market_cap"),
+                    score=score,
+                    reasons=[
+                        f"High call-to-put ratio: {call_to_put:.2f}",
+                        f"Unusual option volume: {total_vol:,} (vs avg {avg_vol:,})",
+                        f"Call volume: {options_flow['call_volume']:,}",
+                        f"Put volume: {options_flow['put_volume']:,}",
+                    ],
+                    metrics={
+                        "call_volume": options_flow["call_volume"],
+                        "put_volume": options_flow["put_volume"],
+                        "call_to_put_ratio": call_to_put,
+                        "total_option_volume": total_vol,
+                        "avg_30day_volume": avg_vol,
+                        "is_unusual_volume": is_unusual,
+                        "pe_ratio": fundamentals.get("pe_ratio"),
+                    },
+                )
+
+                results.append(result)
+                logger.info(f"{ticker}: PASSED - Score={score}, C/P={call_to_put:.2f}")
+
+            except Exception as e:
+                logger.error(f"Error screening {ticker}: {e}")
+                failed_tickers.append(ticker)
+                continue
+
+        # Sort by score (descending)
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
+
+        logger.info(
+            f"Smart Money screening complete: {len(results)} passed, "
+            f"{len(failed_tickers)} failed/skipped. Time: {execution_time:.2f}s"
+        )
+
+        return ScreenerResponse(
+            screener_name="Smart Money",
+            description=f"Options-driven screener tracking institutional conviction (C/P≥{min_call_to_put_ratio}, Vol≥{unusual_volume_multiplier}x avg)",
+            total_results=len(results),
+            results=results,
+            timestamp=datetime.now(),
+            criteria={
+                "min_call_to_put_ratio": min_call_to_put_ratio,
+                "unusual_volume_multiplier": unusual_volume_multiplier,
+                "universe": universe.value,
+                "total_stocks_screened": len(stock_universe),
+                "stocks_failed": len(failed_tickers),
+                "execution_time_seconds": round(execution_time, 2),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Smart Money screener error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/the-undiscovered",
+    response_model=ScreenerResponse,
+    summary="The Undiscovered Screener (Lynch-Inspired)",
+    description="Find hidden gems that are off the radar of major institutions.",
+)
+async def get_the_undiscovered(
+    max_institutional_ownership: float = Query(
+        25.0,
+        description="Maximum institutional ownership percentage",
+        ge=0.0,
+        le=100.0,
+    ),
+    max_analyst_coverage: int = Query(
+        5,
+        description="Maximum number of analysts covering the stock",
+        ge=0,
+        le=50,
+    ),
+    require_insider_buying: bool = Query(
+        True,
+        description="Require recent insider net purchases > 0",
+    ),
+    universe: StockUniverse = Query(
+        StockUniverse.POPULAR,
+        description="Stock universe to screen",
+    ),
+):
+    """
+    The Undiscovered Screener - Lynch-Inspired.
+
+    Peter Lynch loved finding "tenbaggers" before Wall Street did. He believed individual
+    investors had an edge by finding great companies that were not yet widely followed.
+    This screener finds those hidden gems.
+
+    **Philosophy:**
+    Find stocks that are "off the radar" of major institutions - low institutional
+    ownership, minimal analyst coverage, but with insider buying indicating
+    management confidence.
+
+    **Key Filters:**
+    - **Low Institutional Ownership**: Institutional Ownership < max (default: 25%)
+    - **Low Analyst Coverage**: Number of Analysts < max (default: 5)
+    - **Insider Buying**: Recent Insider Net Purchases > 0 (optional)
+
+    **Parameters:**
+    - **max_institutional_ownership**: Maximum institutional ownership % (default: 25%)
+    - **max_analyst_coverage**: Maximum number of analysts (default: 5)
+    - **require_insider_buying**: Require recent insider buying (default: True)
+    - **universe**: Stock universe to screen (popular, sp500_sample, tech)
+
+    **Returns:**
+    List of stocks ranked by "undiscovered" score (lower institutional ownership +
+    lower analyst coverage + insider buying = higher score).
+    """
+    try:
+        start_time = datetime.now()
+        logger.info(
+            f"Starting The Undiscovered screener: "
+            f"Inst Own<={max_institutional_ownership}%, "
+            f"Analysts<={max_analyst_coverage}, "
+            f"Insider Buying={require_insider_buying}"
+        )
+
+        # Initialize provider
+        yf_provider = YFinanceProvider()
+
+        # Get stock universe
+        stock_universe = yf_provider.get_stock_universe(universe)
+        logger.info(f"Screening {len(stock_universe)} stocks from {universe} universe")
+
+        # Screen stocks
+        results = []
+        failed_tickers = []
+
+        for ticker in stock_universe:
+            try:
+                # Get fundamentals (includes institutional ownership)
+                fundamentals = yf_provider.get_fundamentals(ticker)
+
+                # Get analyst and insider data
+                analyst_insider = yf_provider.get_analyst_and_insider_data(ticker)
+
+                # Extract metrics
+                inst_ownership = fundamentals.get("institutional_ownership")
+                analyst_count = analyst_insider.get("analyst_count", 0)
+                insider_net_purchases = analyst_insider.get("insider_net_purchases", 0)
+                has_insider_buying = analyst_insider.get("has_recent_insider_buying", False)
+
+                # Filter: Low institutional ownership
+                if inst_ownership is None:
+                    logger.debug(f"{ticker}: No institutional ownership data")
+                    continue
+
+                if inst_ownership > max_institutional_ownership:
+                    logger.debug(f"{ticker}: Failed inst ownership check ({inst_ownership}%)")
+                    continue
+
+                # Filter: Low analyst coverage
+                if analyst_count > max_analyst_coverage:
+                    logger.debug(f"{ticker}: Failed analyst coverage check ({analyst_count})")
+                    continue
+
+                # Filter: Insider buying (if required)
+                if require_insider_buying and not has_insider_buying:
+                    logger.debug(f"{ticker}: No recent insider buying")
+                    continue
+
+                # Calculate undiscovered score (0-100)
+                score = _calculate_undiscovered_score(
+                    inst_ownership,
+                    analyst_count,
+                    insider_net_purchases,
+                    max_institutional_ownership,
+                    max_analyst_coverage,
+                )
+
+                # Create result
+                result = StockScreenerResult(
+                    ticker=ticker.upper(),
+                    company_name=fundamentals.get("company_name", ticker),
+                    sector=fundamentals.get("sector", "Unknown"),
+                    current_price=fundamentals.get("current_price"),
+                    market_cap=fundamentals.get("market_cap"),
+                    score=score,
+                    reasons=[
+                        f"Low institutional ownership: {inst_ownership:.1f}%",
+                        f"Minimal analyst coverage: {analyst_count} analysts",
+                        f"Insider net purchases: {insider_net_purchases:,} shares" if has_insider_buying else "No recent insider buying",
+                    ],
+                    metrics={
+                        "institutional_ownership": inst_ownership,
+                        "analyst_count": analyst_count,
+                        "insider_net_purchases": insider_net_purchases,
+                        "has_insider_buying": has_insider_buying,
+                        "pe_ratio": fundamentals.get("pe_ratio"),
+                        "peg_ratio": fundamentals.get("peg_ratio"),
+                    },
+                )
+
+                results.append(result)
+                logger.info(
+                    f"{ticker}: PASSED - Score={score}, "
+                    f"Inst={inst_ownership:.1f}%, Analysts={analyst_count}"
+                )
+
+            except Exception as e:
+                logger.error(f"Error screening {ticker}: {e}")
+                failed_tickers.append(ticker)
+                continue
+
+        # Sort by score (descending)
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
+
+        logger.info(
+            f"The Undiscovered screening complete: {len(results)} passed, "
+            f"{len(failed_tickers)} failed/skipped. Time: {execution_time:.2f}s"
+        )
+
+        return ScreenerResponse(
+            screener_name="The Undiscovered",
+            description=f"Lynch-inspired hidden gems (Inst≤{max_institutional_ownership}%, Analysts≤{max_analyst_coverage}, Insider buying={require_insider_buying})",
+            total_results=len(results),
+            results=results,
+            timestamp=datetime.now(),
+            criteria={
+                "max_institutional_ownership": max_institutional_ownership,
+                "max_analyst_coverage": max_analyst_coverage,
+                "require_insider_buying": require_insider_buying,
+                "universe": universe.value,
+                "total_stocks_screened": len(stock_universe),
+                "stocks_failed": len(failed_tickers),
+                "execution_time_seconds": round(execution_time, 2),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"The Undiscovered screener error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/coiled-spring",
+    response_model=ScreenerResponse,
+    summary="The Coiled Spring Screener (Bulkowski-Inspired)",
+    description="Find stocks showing extreme consolidation (NR7 pattern + low volatility) that may breakout soon.",
+)
+async def get_coiled_spring(
+    max_volatility_30d: float = Query(
+        15.0,
+        description="Maximum 30-day historical volatility (%)",
+        ge=5.0,
+        le=50.0,
+    ),
+    require_nr7: bool = Query(
+        True,
+        description="Require NR7 pattern (narrowest range of last 7 days)",
+    ),
+    min_percentile_rank: float = Query(
+        10.0,
+        description="Maximum volatility percentile rank (lower = more compressed)",
+        ge=0.0,
+        le=50.0,
+    ),
+    universe: StockUniverse = Query(
+        StockUniverse.POPULAR,
+        description="Stock universe to screen",
+    ),
+):
+    """
+    The Coiled Spring Screener - Volatility-based breakout detector.
+
+    Based on Thomas Bulkowski's chart pattern work. Finds stocks in extreme
+    consolidation (like a coiled spring) that may breakout violently.
+
+    **Key Filters:**
+    - **NR7 Pattern**: Narrowest range of last 7 days (extreme consolidation)
+    - **Low Volatility**: 30-day HV < 15% (quiet, compressed)
+    - **Percentile Rank**: Current volatility in bottom 10th percentile (historically quiet)
+
+    **Philosophy**: Consolidation precedes expansion. The tighter the coil, the bigger the spring.
+
+    **Returns:**
+    List of stocks ranked by consolidation score (higher = more compressed = higher breakout potential)
+    """
+    try:
+        start_time = datetime.now()
+        yf_provider = YFinanceProvider()
+
+        # Get stock universe
+        stock_universe = yf_provider.get_stock_universe(universe.value)
+        logger.info(
+            f"Coiled Spring screening request: max_vol={max_volatility_30d}%, "
+            f"require_nr7={require_nr7}, max_percentile={min_percentile_rank}"
+        )
+        logger.info(f"Screening {len(stock_universe)} stocks from '{universe.value}' universe")
+
+        results = []
+        failed_tickers = []
+
+        for ticker in stock_universe:
+            try:
+                # Get fundamentals (for company name, sector, price)
+                fundamentals = yf_provider.get_fundamentals(ticker)
+
+                if not fundamentals or fundamentals.get("current_price") is None:
+                    logger.debug(f"{ticker}: Skipping - no fundamentals")
+                    failed_tickers.append(ticker)
+                    continue
+
+                # Get volatility metrics
+                volatility = yf_provider.get_volatility_metrics(ticker)
+
+                if "error" in volatility:
+                    logger.debug(f"{ticker}: Skipping - volatility error: {volatility['error']}")
+                    failed_tickers.append(ticker)
+                    continue
+
+                # Apply filters
+                has_nr7 = volatility.get("has_nr7", False)
+                volatility_30d = volatility.get("volatility_30d")
+                volatility_percentile = volatility.get("volatility_percentile")
+
+                # Filter 1: Require NR7 if specified
+                if require_nr7 and not has_nr7:
+                    logger.debug(f"{ticker}: Filtered out - no NR7 pattern")
+                    continue
+
+                # Filter 2: Low volatility
+                if volatility_30d is None or volatility_30d > max_volatility_30d:
+                    logger.debug(
+                        f"{ticker}: Filtered out - volatility {volatility_30d}% > {max_volatility_30d}%"
+                    )
+                    continue
+
+                # Filter 3: Percentile rank (optional)
+                if volatility_percentile is not None and volatility_percentile > min_percentile_rank:
+                    logger.debug(
+                        f"{ticker}: Filtered out - percentile {volatility_percentile}% > {min_percentile_rank}%"
+                    )
+                    continue
+
+                # Calculate consolidation score
+                consolidation_score = volatility.get("consolidation_score", 0)
+
+                # Create result
+                result = StockScreenerResult(
+                    ticker=ticker.upper(),
+                    company_name=fundamentals.get("company_name", ticker),
+                    sector=fundamentals.get("sector", "Unknown"),
+                    current_price=fundamentals.get("current_price"),
+                    market_cap=fundamentals.get("market_cap"),
+                    score=consolidation_score,
+                    reasons=[
+                        f"{'✓ NR7 Pattern detected' if has_nr7 else '○ No NR7 pattern'}",
+                        f"Low volatility: {volatility_30d:.1f}% (target: <{max_volatility_30d}%)",
+                        f"Volatility percentile: {volatility_percentile:.0f}% (bottom {min_percentile_rank}%)" if volatility_percentile else "Volatility percentile: N/A",
+                        f"Current range: ${volatility.get('current_range', 0):.2f}" if volatility.get('current_range') else "Range: N/A",
+                    ],
+                    metrics={
+                        "has_nr7": has_nr7,
+                        "volatility_30d": volatility_30d,
+                        "volatility_percentile": volatility_percentile,
+                        "current_range": volatility.get("current_range"),
+                        "avg_range_7d": volatility.get("avg_range_7d"),
+                        "consolidation_score": consolidation_score,
+                        "pe_ratio": fundamentals.get("peg_ratio"),  # Include basic fundamentals
+                    },
+                )
+
+                results.append(result)
+                logger.info(
+                    f"{ticker}: PASSED - Score={consolidation_score}, "
+                    f"NR7={has_nr7}, HV30={volatility_30d:.1f}%, P{volatility_percentile:.0f}%"
+                )
+
+            except Exception as e:
+                logger.error(f"Error screening {ticker}: {e}")
+                failed_tickers.append(ticker)
+                continue
+
+        # Sort by consolidation score (descending)
+        results.sort(key=lambda x: x.score, reverse=True)
+
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
+
+        logger.info(
+            f"Coiled Spring screening complete: {len(results)} passed, "
+            f"{len(failed_tickers)} failed/skipped. Time: {execution_time:.2f}s"
+        )
+
+        return ScreenerResponse(
+            screener_name="The Coiled Spring",
+            description=f"Bulkowski-inspired volatility screener (HV30<{max_volatility_30d}%, NR7={require_nr7}, P<{min_percentile_rank}%)",
+            total_results=len(results),
+            results=results,
+            timestamp=datetime.now(),
+            criteria={
+                "max_volatility_30d": max_volatility_30d,
+                "require_nr7": require_nr7,
+                "min_percentile_rank": min_percentile_rank,
+                "universe": universe.value,
+                "total_stocks_screened": len(stock_universe),
+                "stocks_failed": len(failed_tickers),
+                "execution_time_seconds": round(execution_time, 2),
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Coiled Spring screener error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
     "/screeners",
     summary="List Available Screeners",
     description="Get a list of all available screening strategies.",
@@ -340,6 +864,51 @@ async def list_screeners():
             "ideal_for": "Growth investors seeking undervalued high-growth stocks",
             "risk_level": "Medium",
             "typical_holding_period": "2-5 years",
+            "status": "active",
+        },
+        {
+            "name": "Smart Money",
+            "endpoint": "/api/screener/smart-money",
+            "description": "Follow institutional 'smart money' via unusual options activity",
+            "criteria": [
+                "High call-to-put ratio (≥ 3.0) - bullish conviction",
+                "Unusual option volume (> 2x 30-day average)",
+                "Aggressive options positioning",
+            ],
+            "ideal_for": "Traders seeking stocks with strong institutional conviction before major moves",
+            "risk_level": "High",
+            "typical_holding_period": "Days to weeks (short-term)",
+            "status": "active",
+            "note": "Sweep detection requires premium data (not available with free tier)",
+        },
+        {
+            "name": "The Undiscovered",
+            "endpoint": "/api/screener/the-undiscovered",
+            "description": "Find hidden gems off Wall Street's radar (Lynch-inspired)",
+            "criteria": [
+                "Low institutional ownership (< 25%)",
+                "Minimal analyst coverage (< 5 analysts)",
+                "Recent insider buying activity",
+            ],
+            "ideal_for": "Individual investors seeking underfollowed stocks with potential",
+            "risk_level": "Medium-High",
+            "typical_holding_period": "6 months to 3 years",
+            "status": "active",
+        },
+        {
+            "name": "The Coiled Spring",
+            "endpoint": "/api/screener/coiled-spring",
+            "description": "Volatility-based breakout detector (Bulkowski-inspired)",
+            "criteria": [
+                "NR7 Pattern - Narrowest range of last 7 days (extreme consolidation)",
+                "Low volatility - 30-day HV < 15% (quiet period)",
+                "Bottom 10th percentile - Historically compressed volatility",
+            ],
+            "ideal_for": "Swing traders seeking breakout candidates from tight consolidation",
+            "risk_level": "High",
+            "typical_holding_period": "Days to weeks (short-term breakout)",
+            "status": "active",
+            "note": "Based on Thomas Bulkowski's chart pattern research. Consolidation precedes expansion.",
         },
         {
             "name": "Value Screener",
@@ -492,8 +1061,8 @@ async def get_category_presets(category: LynchCategory):
         LynchCategory.ASSET_PLAYS: {
             "category": "asset_plays",
             "name": "Asset Plays",
-            "description": "Companies with hidden assets undervalued by the market",
-            "philosophy": "Market doesn't recognize true value of assets (real estate, patents, inventory)",
+            "description": "Companies with hidden assets undervalued by the market (includes crypto/gold holdings)",
+            "philosophy": "Market doesn't recognize true value of assets - real estate, patents, inventory, Bitcoin/Ethereum holdings, gold reserves",
             "filters": {
                 "max_peg_ratio": None,  # Not applicable
                 "min_eps_growth": None,
@@ -504,9 +1073,10 @@ async def get_category_presets(category: LynchCategory):
                 "min_market_cap": 0.3,  # Often small caps
                 "min_current_ratio": 1.0,
             },
-            "ideal_for": "Value investors seeking hidden gems",
+            "ideal_for": "Value investors seeking hidden gems with undervalued assets",
             "holding_period": "2-5 years",
             "risk_level": "Medium-High",
+            "note": "Notable asset holders: MSTR, TSLA (Bitcoin), NEM, GOLD (Gold reserves), COIN (Crypto holdings)",
         },
     }
 
@@ -1287,3 +1857,113 @@ def _generate_screening_reasons(financials: dict) -> list[str]:
         reasons.append("Meets Lynch Fast Growers criteria")
 
     return reasons
+
+
+def _calculate_smart_money_score(options_flow: dict, min_call_to_put_ratio: float) -> float:
+    """
+    Calculate a Smart Money score based on options flow metrics.
+
+    The score is calculated based on:
+    - Call-to-Put Ratio (60 points): Higher is better (more bullish conviction)
+    - Unusual Volume Indicator (40 points): Whether volume is unusual
+
+    Args:
+        options_flow: Dict containing options flow metrics
+        min_call_to_put_ratio: Minimum C/P ratio threshold
+
+    Returns:
+        Score from 0-100 (higher is better)
+    """
+    score = 0.0
+
+    # Call-to-Put Ratio score (60 points max)
+    # Excellent: > 5.0, Great: 4.0-5.0, Good: 3.0-4.0
+    call_to_put = options_flow.get("call_to_put_ratio", 0)
+    if call_to_put >= 5.0:
+        score += 60
+    elif call_to_put >= 4.0:
+        score += 50
+    elif call_to_put >= min_call_to_put_ratio:
+        # Scale linearly from min threshold to 4.0
+        ratio_above_min = call_to_put - min_call_to_put_ratio
+        max_range = 4.0 - min_call_to_put_ratio
+        score += 40 * (ratio_above_min / max_range) if max_range > 0 else 40
+
+    # Unusual Volume score (40 points max)
+    # True if current volume > 2x average
+    is_unusual = options_flow.get("is_unusual_volume", False)
+    if is_unusual:
+        score += 40
+
+        # Bonus points for extremely unusual volume (> 3x average)
+        total_vol = options_flow.get("total_option_volume", 0)
+        avg_vol = options_flow.get("avg_30day_volume", 1)
+        if avg_vol > 0 and total_vol > (avg_vol * 3):
+            score += 10  # Bonus for extreme volume
+
+    return round(min(score, 100), 1)  # Cap at 100
+
+
+def _calculate_undiscovered_score(
+    inst_ownership: float,
+    analyst_count: int,
+    insider_net_purchases: int,
+    max_inst_ownership: float,
+    max_analyst_count: int,
+) -> float:
+    """
+    Calculate an Undiscovered score based on institutional metrics.
+
+    The score is calculated based on:
+    - Low Institutional Ownership (40 points): Lower is better (more undiscovered)
+    - Low Analyst Coverage (30 points): Lower is better (less followed)
+    - Insider Buying (30 points): Higher net purchases = higher score
+
+    Args:
+        inst_ownership: Institutional ownership percentage
+        analyst_count: Number of analyst ratings
+        insider_net_purchases: Net insider purchases (shares)
+        max_inst_ownership: Maximum institutional ownership threshold
+        max_analyst_count: Maximum analyst count threshold
+
+    Returns:
+        Score from 0-100 (higher is better)
+    """
+    score = 0.0
+
+    # Institutional Ownership score (40 points max)
+    # Perfect: < 10%, Great: 10-15%, Good: 15-25%
+    if inst_ownership < 10:
+        score += 40
+    elif inst_ownership < 15:
+        score += 30
+    elif inst_ownership <= max_inst_ownership:
+        # Scale linearly from 15% to max threshold
+        ownership_above_15 = inst_ownership - 15
+        max_range = max_inst_ownership - 15
+        score += 20 * (1 - (ownership_above_15 / max_range)) if max_range > 0 else 20
+
+    # Analyst Coverage score (30 points max)
+    # Perfect: 0-2 analysts, Great: 2-3, Good: 3-5
+    if analyst_count <= 2:
+        score += 30
+    elif analyst_count <= 3:
+        score += 20
+    elif analyst_count <= max_analyst_count:
+        # Scale linearly from 3 to max threshold
+        analysts_above_3 = analyst_count - 3
+        max_range = max_analyst_count - 3
+        score += 10 * (1 - (analysts_above_3 / max_range)) if max_range > 0 else 10
+
+    # Insider Buying score (30 points max)
+    # Excellent: > 100,000 shares, Great: 50,000-100,000, Good: > 0
+    if insider_net_purchases > 100000:
+        score += 30
+    elif insider_net_purchases > 50000:
+        score += 25
+    elif insider_net_purchases > 10000:
+        score += 20
+    elif insider_net_purchases > 0:
+        score += 15
+
+    return round(score, 1)

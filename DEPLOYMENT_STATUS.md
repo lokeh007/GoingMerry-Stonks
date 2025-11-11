@@ -1,7 +1,7 @@
 # GoingMerry-Stonks - Deployment Status Report
 
-**Last Updated:** November 8, 2025
-**Generated:** November 3, 2025
+**Last Updated:** November 9, 2025
+**Generated:** November 9, 2025
 **Environment:** Production
 **Project ID:** sylvan-earth-477020-u6
 **Region:** us-east5
@@ -10,7 +10,12 @@
 
 ✅ **Infrastructure is fully deployed and operational!**
 
-All Terraform-managed infrastructure components have been successfully deployed to GCP. The backend API is running, database is operational, and all security configurations are in place.
+All Terraform-managed infrastructure components have been successfully deployed to GCP. The backend API is running with **Gann Square of 9 analysis**, Firestore database is operational, and all security configurations are in place.
+
+**Latest Features:**
+- ✨ **Gann Square of 9** - W.D. Gann's mathematical support/resistance analysis
+- ✨ **Firestore Database** - Migrated from Cloud SQL to Firestore (NoSQL)
+- ✨ **Updated Infrastructure** - VPC connector removed, networking optimized
 
 ---
 
@@ -19,45 +24,58 @@ All Terraform-managed infrastructure components have been successfully deployed 
 ### ✅ Backend API (Cloud Run)
 - **Service Name:** `prod-backend-api`
 - **Status:** ✅ RUNNING
-- **URL:** https://prod-backend-api-rlfl2vcoda-ul.a.run.app
+- **URL:** https://prod-backend-api-591098440727.us-east5.run.app
+- **Revision:** prod-backend-api-00019-l7t
 - **Health Status:** ✅ Healthy (`{"status":"healthy"}`)
-- **Image:** `us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v1.0.0`
+- **Image:** `us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:v2.3.0-gann`
 - **Configuration:**
   - Min Instances: 1
   - Max Instances: 10
   - CPU: 2 vCPU
   - Memory: 1 Gi
-  - VPC Connector: Enabled (for Cloud SQL access)
+  - VPC Connector: ❌ Removed (no longer needed)
   - Public Access: Disabled (load balancer only)
+- **Features:**
+  - Stock Screener (Lynch Fast Growers strategy)
+  - Options Analysis (pricing, Greeks, P/L)
+  - Technical Analysis (RSI, SMA, Bollinger Bands)
+  - **Gann Square of 9** (support/resistance levels)
 
-### ✅ Database (Cloud SQL PostgreSQL)
-- **Instance Name:** `prod-postgres-d05b2fe9`
-- **Status:** ✅ RUNNABLE
-- **Version:** PostgreSQL 15
-- **Tier:** db-custom-2-8192 (2 vCPU, 8GB RAM)
+### ✅ Database (Firestore)
+- **Database Name:** `(default)`
+- **Status:** ✅ ACTIVE
+- **Type:** Firestore Native
+- **Location:** us-east5
 - **Configuration:**
-  - High Availability: ✅ Enabled (Regional with failover)
-  - Point-in-Time Recovery: ✅ Enabled
-  - Disk Size: 20 GB (autoresize to 100 GB)
-  - Max Connections: 100
-  - Private IP: ✅ Enabled (VPC peering configured)
+  - Delete Protection: ✅ Enabled
+  - IAM Access: Backend service account has `datastore.user` role
 
 ### ✅ Load Balancer & Networking
-- **Global IP:** 34.8.254.23
-- **DNS:** api.goingmerry-stonks.com → 34.8.254.23
+- **Global IP:** 34.49.214.19 (updated November 9, 2025)
+- **DNS:** api.goingmerry-stonks.com → 34.49.214.19 (needs DNS update)
 - **SSL Certificate:** ⏳ PROVISIONING (waiting for DNS propagation)
 - **HTTP → HTTPS Redirect:** ✅ Configured
 - **Cloud Armor:** ✅ Enabled
-  - Rate Limiting: 100 requests/min per IP
-  - Blocked Countries: Russia (RU)
-- **Backend NEG:** ✅ Configured
-- **Health Checks:** ✅ Configured
+- **Backend Service:** ✅ Connected to Cloud Run
+- **Frontend Backend Bucket:** ✅ Connected to Cloud Storage (backup deployment)
 
-### ✅ VPC & Connectivity
-- **VPC Network:** `prod-vpc`
-- **VPC Connector:** `prod-vpc-connector` (10.8.0.0/28)
-- **Service Networking:** ✅ Configured
-- **Private IP Range:** `prod-private-ip` (VPC peering for Cloud SQL)
+### ✅ Frontend (Firebase Hosting)
+- **Status:** ✅ DEPLOYED
+- **Primary URL:** https://goingmerry-stonks.web.app
+- **Project:** goingmerry-stonks
+- **Deployment Date:** November 9, 2025
+- **Build Size:** 151.99 kB (gzipped)
+- **Pages:**
+  - Stock Screener (Lynch Fast Growers)
+  - Options Analysis
+  - Technical Analysis
+  - **Gann Square of 9** (NEW)
+
+### ❌ VPC & Connectivity (Removed)
+- **VPC Network:** ❌ Removed (no longer needed with Firestore)
+- **VPC Connector:** ❌ Removed (backend connects directly to Firestore)
+- **Service Networking:** ❌ Removed
+- **Private IP Range:** ❌ Removed
 
 ### ✅ Secrets Management
 - **Polygon API Key:** ✅ Stored in Secret Manager

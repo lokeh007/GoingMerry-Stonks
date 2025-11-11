@@ -57,7 +57,99 @@ export const getVixData = async (): Promise<VixData> => {
  * @returns Promise resolving to array of screener metadata
  */
 export const getAvailableScreeners = async (): Promise<any[]> => {
-  const response = await apiClient.get<any[]>('/screener/screeners');
+  const response = await apiClient.get<any>('/screener/screeners');
+  return response.data.screeners || [];
+};
+
+/**
+ * Run Smart Money screener (options-driven)
+ *
+ * @param params - Screening parameters
+ * @returns Promise resolving to screener response with results
+ */
+export const runSmartMoneyScreener = async (params: {
+  min_call_to_put_ratio?: number;
+  unusual_volume_multiplier?: number;
+  universe?: string;
+}): Promise<ScreenerResponse> => {
+  const queryParams = new URLSearchParams();
+
+  if (params.min_call_to_put_ratio !== undefined) {
+    queryParams.append('min_call_to_put_ratio', params.min_call_to_put_ratio.toString());
+  }
+  if (params.unusual_volume_multiplier !== undefined) {
+    queryParams.append('unusual_volume_multiplier', params.unusual_volume_multiplier.toString());
+  }
+  if (params.universe) {
+    queryParams.append('universe', params.universe);
+  }
+
+  const url = `/screener/smart-money?${queryParams.toString()}`;
+  const response = await apiClient.get<ScreenerResponse>(url);
+  return response.data;
+};
+
+/**
+ * Run The Undiscovered screener (Lynch-inspired)
+ *
+ * @param params - Screening parameters
+ * @returns Promise resolving to screener response with results
+ */
+export const runUndiscoveredScreener = async (params: {
+  max_institutional_ownership?: number;
+  max_analyst_coverage?: number;
+  require_insider_buying?: boolean;
+  universe?: string;
+}): Promise<ScreenerResponse> => {
+  const queryParams = new URLSearchParams();
+
+  if (params.max_institutional_ownership !== undefined) {
+    queryParams.append('max_institutional_ownership', params.max_institutional_ownership.toString());
+  }
+  if (params.max_analyst_coverage !== undefined) {
+    queryParams.append('max_analyst_coverage', params.max_analyst_coverage.toString());
+  }
+  if (params.require_insider_buying !== undefined) {
+    queryParams.append('require_insider_buying', params.require_insider_buying.toString());
+  }
+  if (params.universe) {
+    queryParams.append('universe', params.universe);
+  }
+
+  const url = `/screener/the-undiscovered?${queryParams.toString()}`;
+  const response = await apiClient.get<ScreenerResponse>(url);
+  return response.data;
+};
+
+/**
+ * Run The Coiled Spring screener (Bulkowski-inspired)
+ *
+ * @param params - Screening parameters
+ * @returns Promise resolving to screener response with results
+ */
+export const runCoiledSpringScreener = async (params: {
+  max_volatility_30d?: number;
+  require_nr7?: boolean;
+  min_percentile_rank?: number;
+  universe?: string;
+}): Promise<ScreenerResponse> => {
+  const queryParams = new URLSearchParams();
+
+  if (params.max_volatility_30d !== undefined) {
+    queryParams.append('max_volatility_30d', params.max_volatility_30d.toString());
+  }
+  if (params.require_nr7 !== undefined) {
+    queryParams.append('require_nr7', params.require_nr7.toString());
+  }
+  if (params.min_percentile_rank !== undefined) {
+    queryParams.append('min_percentile_rank', params.min_percentile_rank.toString());
+  }
+  if (params.universe) {
+    queryParams.append('universe', params.universe);
+  }
+
+  const url = `/screener/coiled-spring?${queryParams.toString()}`;
+  const response = await apiClient.get<ScreenerResponse>(url);
   return response.data;
 };
 

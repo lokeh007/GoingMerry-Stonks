@@ -127,8 +127,6 @@ resource "google_project_iam_member" "backend_firestore_user" {
   project = var.project_id
   role    = "roles/datastore.user"
   member  = "serviceAccount:${module.backend.service_account_email}"
-
-  depends_on = [module.backend, google_firestore_database.main]
 }
 
 # Networking module (Load Balancer for Backend API and Frontend)

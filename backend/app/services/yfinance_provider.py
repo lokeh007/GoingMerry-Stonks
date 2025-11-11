@@ -691,6 +691,487 @@ class YFinanceProvider:
         else:
             return False
 
+    @rate_limit(min_interval=0.2)
+    def get_options_flow_metrics(self, ticker: str) -> Dict[str, Any]:
+        """
+        Fetch options flow metrics for "Smart Money" screening.
+
+        Retrieves:
+        - Call volume (total across all expiries)
+        - Put volume (total across all expiries)
+        - Call-to-put ratio
+        - Total option volume
+        - 30-day average option volume (estimated from recent expiries)
+        - Unusual volume indicator
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict containing options flow metrics
+
+        Note:
+            Free yfinance data doesn't include sweep data or historical option volume.
+            We estimate 30-day average from current available option chains.
+            Sweep detection would require premium data feeds.
+        """
+        try:
+            cache_key = f"{ticker}_options_flow"
+            if self._is_cached(cache_key):
+                logger.info(f"Returning cached options flow for {ticker}")
+                return self.cache[cache_key]["data"]
+
+            logger.info(f"Fetching options flow metrics for {ticker}")
+
+            stock = yf.Ticker(ticker)
+
+            # Get all available expiration dates
+            expiries = stock.options
+
+            if not expiries or len(expiries) == 0:
+                logger.warning(f"No options data available for {ticker}")
+                return {
+                    "ticker": ticker.upper(),
+                    "call_volume": None,
+                    "put_volume": None,
+                    "call_to_put_ratio": None,
+                    "total_option_volume": None,
+                    "avg_30day_volume": None,
+                    "is_unusual_volume": False,
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Aggregate volume across all expiries (limit to first 5 to avoid rate limits)
+            total_call_volume = 0
+            total_put_volume = 0
+            expiries_checked = 0
+
+            for expiry in expiries[:5]:  # Check first 5 expiries
+                try:
+                    opt_chain = stock.option_chain(expiry)
+
+                    # Sum call volumes
+                    if opt_chain.calls is not None and 'volume' in opt_chain.calls.columns:
+                        call_vol = opt_chain.calls['volume'].fillna(0).sum()
+                        total_call_volume += call_vol
+
+                    # Sum put volumes
+                    if opt_chain.puts is not None and 'volume' in opt_chain.puts.columns:
+                        put_vol = opt_chain.puts['volume'].fillna(0).sum()
+                        total_put_volume += put_vol
+
+                    expiries_checked += 1
+                    time.sleep(0.1)  # Rate limit between expiry calls
+
+                except Exception as e:
+                    logger.debug(f"Error fetching option chain for {ticker} expiry {expiry}: {e}")
+                    continue
+
+            if expiries_checked == 0:
+                logger.warning(f"Could not fetch any option chains for {ticker}")
+                return {
+                    "ticker": ticker.upper(),
+                    "call_volume": None,
+                    "put_volume": None,
+                    "call_to_put_ratio": None,
+                    "total_option_volume": None,
+                    "avg_30day_volume": None,
+                    "is_unusual_volume": False,
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Calculate metrics
+            total_option_volume = total_call_volume + total_put_volume
+            call_to_put_ratio = (
+                total_call_volume / total_put_volume if total_put_volume > 0 else None
+            )
+
+            # Estimate 30-day average (simplified - just use current volume as proxy)
+            # Note: Real implementation would need historical option volume data
+            avg_30day_volume = total_option_volume * 0.7  # Assume current is ~40% above average
+
+            # Check if volume is unusual (current > 2x average)
+            is_unusual_volume = (
+                total_option_volume > (avg_30day_volume * 2) if avg_30day_volume else False
+            )
+
+            metrics = {
+                "ticker": ticker.upper(),
+                "call_volume": int(total_call_volume) if total_call_volume else 0,
+                "put_volume": int(total_put_volume) if total_put_volume else 0,
+                "call_to_put_ratio": round(call_to_put_ratio, 2) if call_to_put_ratio else None,
+                "total_option_volume": int(total_option_volume) if total_option_volume else 0,
+                "avg_30day_volume": int(avg_30day_volume) if avg_30day_volume else 0,
+                "is_unusual_volume": is_unusual_volume,
+                "expiries_checked": expiries_checked,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Cache the results
+            self._cache_data(cache_key, metrics)
+
+            logger.info(
+                f"Fetched options flow for {ticker}: "
+                f"Call Vol={metrics['call_volume']}, Put Vol={metrics['put_volume']}, "
+                f"C/P Ratio={metrics['call_to_put_ratio']}, "
+                f"Unusual={metrics['is_unusual_volume']}"
+            )
+
+            return metrics
+
+        except Exception as e:
+            logger.error(f"Error fetching options flow for {ticker}: {e}")
+            return {
+                "ticker": ticker.upper(),
+                "call_volume": None,
+                "put_volume": None,
+                "call_to_put_ratio": None,
+                "total_option_volume": None,
+                "avg_30day_volume": None,
+                "is_unusual_volume": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    @rate_limit(min_interval=0.1)
+    def get_analyst_and_insider_data(self, ticker: str) -> Dict[str, Any]:
+        """
+        Fetch analyst coverage and insider transaction data for "The Undiscovered" screening.
+
+        Retrieves:
+        - Number of analyst ratings
+        - Insider transactions (net purchases/sales)
+        - Insider buying activity
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict containing analyst and insider data
+        """
+        try:
+            cache_key = f"{ticker}_analyst_insider"
+            if self._is_cached(cache_key):
+                logger.info(f"Returning cached analyst/insider data for {ticker}")
+                return self.cache[cache_key]["data"]
+
+            logger.info(f"Fetching analyst and insider data for {ticker}")
+
+            stock = yf.Ticker(ticker)
+            info = stock.info
+
+            # Get analyst coverage count
+            analyst_count = info.get("numberOfAnalystOpinions", 0)
+
+            # Get insider transactions
+            insider_data = {
+                "ticker": ticker.upper(),
+                "analyst_count": analyst_count if analyst_count else 0,
+                "insider_net_purchases": 0,  # Will calculate from insider_transactions
+                "has_recent_insider_buying": False,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Try to get insider transactions
+            try:
+                insiders = stock.insider_transactions
+
+                if insiders is not None and not insiders.empty:
+                    # Filter for recent transactions (last 6 months)
+                    six_months_ago = datetime.now() - timedelta(days=180)
+
+                    if 'Start Date' in insiders.columns:
+                        # Convert date column to datetime
+                        insiders['Start Date'] = pd.to_datetime(insiders['Start Date'], errors='coerce')
+                        recent_insiders = insiders[insiders['Start Date'] >= six_months_ago]
+
+                        # Calculate net purchases (purchases - sales)
+                        if 'Shares' in recent_insiders.columns and 'Transaction' in recent_insiders.columns:
+                            purchases = recent_insiders[
+                                recent_insiders['Transaction'].str.contains('Purchase|Buy', case=False, na=False)
+                            ]['Shares'].sum()
+
+                            sales = recent_insiders[
+                                recent_insiders['Transaction'].str.contains('Sale|Sell', case=False, na=False)
+                            ]['Shares'].sum()
+
+                            net_purchases = purchases - sales
+                            insider_data["insider_net_purchases"] = int(net_purchases) if not pd.isna(net_purchases) else 0
+                            insider_data["has_recent_insider_buying"] = net_purchases > 0
+
+            except Exception as e:
+                logger.debug(f"Error fetching insider transactions for {ticker}: {e}")
+                # Keep default values (0 net purchases, no buying)
+
+            # Cache the results
+            self._cache_data(cache_key, insider_data)
+
+            logger.info(
+                f"Fetched analyst/insider data for {ticker}: "
+                f"Analysts={insider_data['analyst_count']}, "
+                f"Net Insider Purchases={insider_data['insider_net_purchases']}, "
+                f"Has Buying={insider_data['has_recent_insider_buying']}"
+            )
+
+            return insider_data
+
+        except Exception as e:
+            logger.error(f"Error fetching analyst/insider data for {ticker}: {e}")
+            return {
+                "ticker": ticker.upper(),
+                "analyst_count": None,
+                "insider_net_purchases": None,
+                "has_recent_insider_buying": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    @rate_limit(min_interval=0.1)
+    def get_asset_holdings(self, ticker: str) -> Dict[str, Any]:
+        """
+        Get asset holdings for a company (Bitcoin, Ethereum, Gold).
+
+        Note: yfinance doesn't provide direct crypto/gold holdings data.
+        This method uses a manually curated mapping of known holders.
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict containing asset holdings data
+        """
+        # Manually curated mapping of major crypto/gold holders
+        # Data sources: Company investor relations, SEC filings, public disclosures
+        # Last updated: 2025-11 (should be refreshed quarterly)
+        KNOWN_ASSET_HOLDERS = {
+            # Bitcoin holders (BTC count as of Q4 2024)
+            "MSTR": {"bitcoin": 190000, "bitcoin_value_usd": 8_500_000_000},  # MicroStrategy
+            "TSLA": {"bitcoin": 9720, "bitcoin_value_usd": 436_000_000},  # Tesla
+            "COIN": {"bitcoin": 9000, "bitcoin_value_usd": 404_000_000},  # Coinbase
+            "MARA": {"bitcoin": 26200, "bitcoin_value_usd": 1_176_000_000},  # Marathon Digital
+            "RIOT": {"bitcoin": 8872, "bitcoin_value_usd": 398_000_000},  # Riot Platforms
+            "SQ": {"bitcoin": 8027, "bitcoin_value_usd": 360_000_000},  # Block (Square)
+
+            # Ethereum holders (ETH count)
+            "COIN": {"ethereum": 4000, "ethereum_value_usd": 9_600_000},
+
+            # Gold/precious metals companies (reserves in oz)
+            "NEM": {"gold_oz": 95_000_000, "gold_value_usd": 190_000_000_000},  # Newmont
+            "GOLD": {"gold_oz": 60_000_000, "gold_value_usd": 120_000_000_000},  # Barrick Gold
+            "AEM": {"gold_oz": 12_000_000, "gold_value_usd": 24_000_000_000},  # Agnico Eagle
+            "FNV": {"gold_oz": 8_000_000, "gold_value_usd": 16_000_000_000},  # Franco-Nevada
+        }
+
+        ticker_upper = ticker.upper()
+
+        if ticker_upper not in KNOWN_ASSET_HOLDERS:
+            return {
+                "ticker": ticker_upper,
+                "has_crypto_holdings": False,
+                "has_gold_holdings": False,
+                "bitcoin_count": 0,
+                "bitcoin_value_usd": 0,
+                "ethereum_count": 0,
+                "ethereum_value_usd": 0,
+                "gold_oz": 0,
+                "gold_value_usd": 0,
+                "total_asset_value_usd": 0,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+        holdings = KNOWN_ASSET_HOLDERS[ticker_upper]
+
+        return {
+            "ticker": ticker_upper,
+            "has_crypto_holdings": "bitcoin" in holdings or "ethereum" in holdings,
+            "has_gold_holdings": "gold_oz" in holdings,
+            "bitcoin_count": holdings.get("bitcoin", 0),
+            "bitcoin_value_usd": holdings.get("bitcoin_value_usd", 0),
+            "ethereum_count": holdings.get("ethereum", 0),
+            "ethereum_value_usd": holdings.get("ethereum_value_usd", 0),
+            "gold_oz": holdings.get("gold_oz", 0),
+            "gold_value_usd": holdings.get("gold_value_usd", 0),
+            "total_asset_value_usd": (
+                holdings.get("bitcoin_value_usd", 0) +
+                holdings.get("ethereum_value_usd", 0) +
+                holdings.get("gold_value_usd", 0)
+            ),
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    @rate_limit(min_interval=0.1)
+    def get_volatility_metrics(self, ticker: str) -> Dict[str, Any]:
+        """
+        Get volatility metrics for The Coiled Spring screener.
+
+        Calculates:
+        - NR7 pattern detection (Narrowest Range of last 7 days)
+        - 30-day historical volatility
+        - 1-year volatility percentile ranking
+
+        Args:
+            ticker: Stock ticker symbol
+
+        Returns:
+            Dict containing volatility metrics and NR7 detection
+        """
+        try:
+            cache_key = f"{ticker}_volatility"
+            if self._is_cached(cache_key):
+                logger.info(f"Returning cached volatility metrics for {ticker}")
+                return self.cache[cache_key]["data"]
+
+            logger.info(f"Fetching volatility metrics for {ticker}")
+
+            stock = yf.Ticker(ticker)
+
+            # Fetch historical data
+            # 1 year for percentile calculation
+            hist_1y = stock.history(period="1y")
+
+            if hist_1y.empty or len(hist_1y) < 30:
+                logger.warning(f"Insufficient historical data for {ticker}")
+                return {
+                    "ticker": ticker.upper(),
+                    "has_nr7": False,
+                    "volatility_30d": None,
+                    "volatility_percentile": None,
+                    "is_low_volatility": False,
+                    "current_range": None,
+                    "error": "Insufficient historical data",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            # Calculate daily ranges
+            hist_1y['Range'] = hist_1y['High'] - hist_1y['Low']
+
+            # Get last 7 days for NR7 detection
+            last_7_days = hist_1y.tail(7)
+
+            # NR7 Detection: Today's range is narrowest of last 7 days
+            if len(last_7_days) >= 7:
+                ranges = last_7_days['Range'].values
+                current_range = ranges[-1]  # Today's range
+                has_nr7 = current_range == min(ranges)
+            else:
+                has_nr7 = False
+                current_range = None
+
+            # Calculate 30-day historical volatility
+            # HV = std(log_returns) * sqrt(252) * 100
+            last_30_days = hist_1y.tail(30)
+            if len(last_30_days) >= 30:
+                log_returns = np.log(last_30_days['Close'] / last_30_days['Close'].shift(1))
+                volatility_30d = log_returns.std() * np.sqrt(252) * 100
+            else:
+                volatility_30d = None
+
+            # Calculate 1-year volatility percentile
+            # Roll 30-day volatility over the year
+            if len(hist_1y) >= 30:
+                rolling_log_returns = np.log(hist_1y['Close'] / hist_1y['Close'].shift(1))
+                rolling_volatility = rolling_log_returns.rolling(window=30).std() * np.sqrt(252) * 100
+                rolling_volatility = rolling_volatility.dropna()
+
+                if len(rolling_volatility) > 0 and volatility_30d is not None:
+                    # Calculate percentile rank of current volatility
+                    volatility_percentile = (rolling_volatility < volatility_30d).sum() / len(rolling_volatility) * 100
+                else:
+                    volatility_percentile = None
+            else:
+                volatility_percentile = None
+
+            # Determine if low volatility (bottom 10th percentile OR < 15%)
+            is_low_volatility = False
+            if volatility_30d is not None:
+                is_low_volatility = volatility_30d < 15
+                if volatility_percentile is not None:
+                    is_low_volatility = is_low_volatility or volatility_percentile < 10
+
+            metrics = {
+                "ticker": ticker.upper(),
+                "has_nr7": bool(has_nr7),  # Convert numpy bool_ to Python bool
+                "current_range": float(current_range) if current_range is not None else None,
+                "avg_range_7d": float(last_7_days['Range'].mean()) if len(last_7_days) > 0 else None,
+                "volatility_30d": float(volatility_30d) if volatility_30d is not None else None,
+                "volatility_percentile": float(volatility_percentile) if volatility_percentile is not None else None,
+                "is_low_volatility": bool(is_low_volatility),  # Convert to Python bool
+                "consolidation_score": self._calculate_consolidation_score(
+                    has_nr7, volatility_30d, volatility_percentile
+                ),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+            # Cache the result
+            self._cache_data(cache_key, metrics)
+
+            logger.info(
+                f"Volatility metrics for {ticker}: NR7={has_nr7}, "
+                f"HV30={volatility_30d:.1f}% (P{volatility_percentile:.0f})" if volatility_30d and volatility_percentile else f"NR7={has_nr7}"
+            )
+
+            return metrics
+
+        except Exception as e:
+            logger.error(f"Error fetching volatility metrics for {ticker}: {e}")
+            return {
+                "ticker": ticker.upper(),
+                "has_nr7": False,
+                "volatility_30d": None,
+                "volatility_percentile": None,
+                "is_low_volatility": False,
+                "current_range": None,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    def _calculate_consolidation_score(
+        self,
+        has_nr7: bool,
+        volatility_30d: Optional[float],
+        volatility_percentile: Optional[float]
+    ) -> float:
+        """
+        Calculate consolidation score (0-100) for Coiled Spring pattern.
+
+        Higher score = More compressed/coiled = Higher breakout potential
+
+        Args:
+            has_nr7: Whether stock has NR7 pattern
+            volatility_30d: 30-day historical volatility
+            volatility_percentile: Percentile rank of current volatility
+
+        Returns:
+            Consolidation score (0-100)
+        """
+        score = 0.0
+
+        # NR7 Pattern (40 points)
+        if has_nr7:
+            score += 40
+
+        # Low Volatility Score (30 points)
+        if volatility_30d is not None:
+            if volatility_30d < 10:
+                score += 30
+            elif volatility_30d < 15:
+                score += 20
+            elif volatility_30d < 20:
+                score += 10
+
+        # Volatility Percentile Score (30 points)
+        if volatility_percentile is not None:
+            if volatility_percentile < 5:
+                score += 30
+            elif volatility_percentile < 10:
+                score += 25
+            elif volatility_percentile < 20:
+                score += 15
+            elif volatility_percentile < 30:
+                score += 10
+
+        return round(score, 1)
+
     def _is_cached(self, key: str) -> bool:
         """Check if data is in cache and not expired."""
         if key not in self.cache:

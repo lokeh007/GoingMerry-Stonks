@@ -12,7 +12,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 // Create axios instance with base URL
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 second timeout
+  timeout: 120000, // 120 second timeout (2 minutes) for screener endpoints
   headers: {
     'Content-Type': 'application/json',
   },
