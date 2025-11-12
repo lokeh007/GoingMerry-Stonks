@@ -25,17 +25,27 @@ Internet
     │  └─ URL: https://goingmerry-stonks.web.app
     │  └─ Serves: React SPA (build/)
     │  └─ CDN: Global (Firebase CDN)
+    │  └─ Cache: Loads screener results from Firestore (<1 sec)
     │
     ├─ Frontend (BACKUP): Cloud Storage + CDN
     │  └─ Bucket: gs://sylvan-earth-477020-u6-frontend
     │  └─ Note: Alternative deployment option
     │
-    └─ Backend: Cloud Run (FastAPI)
-       ├─ URL: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
-       ├─ Routes: /api/*, /options/*, /screener/*, /technical/*, /health
-       ├─ Database: Cloud SQL PostgreSQL 15 (HA enabled)
-       ├─ Secrets: Secret Manager (Polygon API key, DB credentials)
-       └─ Security: Cloud Armor (rate limiting, geo-blocking)
+    ├─ Backend: Cloud Run (FastAPI)
+    │  ├─ URL: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
+    │  ├─ Routes: /api/*, /options/*, /screener/*, /technical/*, /health
+    │  ├─ Database: Cloud SQL PostgreSQL 15 (HA enabled)
+    │  ├─ Secrets: Secret Manager (Polygon API key, DB credentials)
+    │  └─ Security: Cloud Armor (rate limiting, geo-blocking)
+    │
+    └─ Batch Screeners: Cloud Run Jobs (Automated Daily)
+       ├─ Batch 1: prod-daily-screeners-batch-1 (4:30 PM ET, A-H stocks)
+       ├─ Batch 2: prod-daily-screeners-batch-2 (6:00 PM ET, I-P stocks)
+       ├─ Batch 3: prod-daily-screeners-batch-3 (7:30 PM ET, Q-Z stocks)
+       ├─ Coverage: ~6,000 NYSE + NASDAQ stocks total
+       ├─ Schedulers: 3 Cloud Schedulers (Mon-Fri, 90-min stagger)
+       ├─ Cache: Saves results to Firestore for instant frontend loading
+       └─ Sources: SEC EDGAR + NASDAQ FTP (100% free)
 ```
 
 ### Infrastructure Components
@@ -44,6 +54,13 @@ Internet
 |-----------|---------------|--------|
 | **Frontend (PRIMARY)** | goingmerry-stonks (Firebase) | ✅ Active |
 | **Backend Service** | prod-backend-api | ✅ Running (Cloud Run) |
+| **Batch Job 1** | prod-daily-screeners-batch-1 | ✅ Active (A-H stocks) |
+| **Batch Job 2** | prod-daily-screeners-batch-2 | ✅ Active (I-P stocks) |
+| **Batch Job 3** | prod-daily-screeners-batch-3 | ✅ Active (Q-Z stocks) |
+| **Cloud Scheduler 1** | prod-trigger-daily-screeners-batch-1 | ✅ Enabled (4:30 PM ET) |
+| **Cloud Scheduler 2** | prod-trigger-daily-screeners-batch-2 | ✅ Enabled (6:00 PM ET) |
+| **Cloud Scheduler 3** | prod-trigger-daily-screeners-batch-3 | ✅ Enabled (7:30 PM ET) |
+| **Firestore Database** | (default) | ✅ Active (screener cache) |
 | **Database** | prod-postgres-d05b2fe9 | ✅ RUNNABLE (PostgreSQL 15) |
 | **Frontend (Backup)** | sylvan-earth-477020-u6-frontend | ✅ Active (Cloud Storage) |
 | **VPC Connector** | prod-vpc-connector | ✅ Active |

@@ -97,8 +97,8 @@ class GannSquareCalculator:
             }
 
             logger.info(
-                f"Gann levels calculated: support={nearest_support:.2f}, "
-                f"resistance={nearest_resistance:.2f}, position={position}"
+                f"Gann levels calculated: support={nearest_support if nearest_support is None else f'{nearest_support:.2f}'}, "
+                f"resistance={nearest_resistance if nearest_resistance is None else f'{nearest_resistance:.2f}'}, position={position}"
             )
 
             return result

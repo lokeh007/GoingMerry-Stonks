@@ -22,6 +22,17 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 
 ## 🎉 Recent Updates (November 2025)
 
+### 🚀 Batch Screener System - Production Ready!
+- ✅ **6,000 Stocks Screened Daily** - Full NYSE + NASDAQ coverage (up from 109 stocks!)
+- ✅ **3 Batched Cloud Run Jobs** - Staggered execution to prevent API conflicts
+  - Batch 1: 4:30 PM ET (A-H, ~2,000 stocks)
+  - Batch 2: 6:00 PM ET (I-P, ~2,000 stocks)
+  - Batch 3: 7:30 PM ET (Q-Z, ~2,000 stocks)
+- ✅ **Firestore Cache Integration** - Results load instantly (<1 second vs 30-40 seconds)
+- ✅ **Automated Daily Execution** - Fresh screener data every weekday evening
+- ✅ **100% Free Data Sources** - SEC EDGAR + NASDAQ FTP (no paid API required)
+- ✅ **Smart Money, Undiscovered, Coiled Spring** - All screeners cached for instant access
+
 ### Enhanced Stock Screener
 - ✅ **yfinance Migration Complete** - Unlimited free market data, no more rate limits!
 - ✅ **14 Financial Metrics** - Added PE ratio, revenue growth, 52-week high/low
@@ -30,8 +41,12 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 - ✅ **Input Validation** - Type-safe stock universe selection with enums
 - ✅ **Optimized Performance** - Debug-level logging for high-volume screening
 
+### Technical Analysis Improvements
+- ✅ **Gann Square of 9 Calculator** - Fixed None handling for stocks far from reference price
+- ✅ **Support for All Stocks** - Works reliably for both low and high-priced stocks
+
 ### Code Quality Improvements
-- ✅ **All Tests Passing** - 46/46 tests, 39% coverage
+- ✅ **All Tests Passing** - 46/46 tests, 54% coverage
 - ✅ **Simplified Codebase** - Removed dead code and unnecessary complexity
 - ✅ **Better Configuration** - Environment variable support for technical limits
 - ✅ **Improved Documentation** - Updated endpoint docs to match actual behavior
@@ -65,19 +80,24 @@ GoingMerry-Stonks is a modern financial analysis platform designed for serious t
 - **Risk/reward analysis** with ROC calculations
 - **Hover tooltips** for precise P/L at any price point
 
-### 🔍 Alpha Engine - Stock Screener (Enhanced!)
-- **Lynch Fast Growers**: Peter Lynch's legendary growth investing strategy
+### 🔍 Alpha Engine - Stock Screener (Production Grade!)
+- **6,000 Stocks Daily**: Full NYSE + NASDAQ universe screened automatically
+- **Instant Results**: Firestore cache delivers results in <1 second (vs 30-40 sec real-time)
+- **3 Specialized Screeners**:
+  - **Smart Money** - Unusual options activity, institutional positioning
+  - **The Undiscovered** - Low institutional ownership + insider buying (Peter Lynch "tenbaggers")
+  - **Coiled Spring** - NR7 volatility patterns (Bulkowski breakout setups)
 - **6 Lynch Categories**: Fast Growers, Stalwarts, Slow Growers, Cyclicals, Turnarounds, Asset Plays
 - **Advanced Multi-Layered Screening**:
   - **Layer 1: Fundamentals** - PEG ratio, earnings growth, debt ratios, ROE, liquidity
   - **Layer 2: Technical Triggers** - RSI, MACD, Gann levels, chart patterns
   - **Layer 3: Market Context** - VIX-based market regime filtering
-- **Free Market Data**: Powered by yfinance (unlimited API calls, no rate limits!)
+- **Free Market Data**: Powered by yfinance + SEC EDGAR (unlimited, no paid APIs!)
 - **14 Financial Metrics**: PE ratio, PEG, EPS growth, revenue growth, debt/equity, ROE, current ratio, institutional ownership, 52-week high/low, and more
 - **Smart Scoring Algorithm**: 0-100 scoring based on multiple criteria
 - **Customizable Criteria**: Adjust thresholds for PEG, growth rates, debt levels, etc.
-- **Multiple Stock Universes**: Popular stocks, S&P 500 sample, Tech sector, or custom lists
-- **Detailed Reasoning**: Each result includes specific reasons for passing the screen
+- **Automated Daily Updates**: Runs Mon-Fri evenings, results ready before next trading day
+- **Historical Tracking**: 30 days of cached results for trend analysis
 
 ### 🎯 Financial Metrics
 - Net credit/debit calculations

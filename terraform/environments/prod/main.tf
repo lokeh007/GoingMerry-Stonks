@@ -42,6 +42,7 @@ resource "google_project_service" "required_apis" {
     "firebase.googleapis.com",         # Firebase
     "firebasehosting.googleapis.com",  # Firebase Hosting
     "firestore.googleapis.com",        # Cloud Firestore
+    "cloudscheduler.googleapis.com",   # Cloud Scheduler
     "cloudresourcemanager.googleapis.com",
     "iam.googleapis.com",
     "logging.googleapis.com",
@@ -151,6 +152,33 @@ module "networking" {
   depends_on = [
     google_project_service.required_apis,
     module.backend
+  ]
+}
+
+# Scheduled Jobs module (Daily Screeners)
+module "scheduled_jobs" {
+  source = "../../modules/scheduled_jobs"
+
+  project_id       = var.project_id
+  region           = var.region
+  environment      = var.environment
+
+  polygon_api_key_secret = module.secrets.polygon_api_key_secret_id
+  service_account_email  = module.backend.service_account_email
+
+  # Schedule: 6:30 PM ET Monday-Friday (after market close)
+  job_schedule = "30 23 * * 1-5"  # 23:30 UTC = 6:30 PM ET
+
+  # Resource allocation for processing ~6000 stocks
+  job_timeout = 7200  # 2 hours
+  job_memory  = "2Gi"
+  job_cpu     = "2"
+
+  depends_on = [
+    google_project_service.required_apis,
+    module.backend,
+    module.secrets,
+    google_firestore_database.main
   ]
 }
 

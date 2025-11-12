@@ -25,6 +25,11 @@ import {
   parseScreenerURLParams,
   buildScreenerURLParams,
 } from '../utils/screenerApi';
+import {
+  loadCachedScreenerResults,
+  formatLastUpdated,
+  isCachedResultStale,
+} from '../utils/firestoreCache';
 import './StockScreenerPage.css';
 
 // Screener type enum
@@ -102,6 +107,11 @@ const StockScreenerPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Cached results state
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [isCached, setIsCached] = useState<boolean>(false);
+  const [loadingCached, setLoadingCached] = useState<boolean>(false);
+
   // Parse URL parameters on mount
   useEffect(() => {
     const params = parseScreenerURLParams(searchParams);
@@ -110,12 +120,60 @@ const StockScreenerPage: React.FC = () => {
     }
   }, [searchParams]);
 
+  // Load cached results when switching to Undiscovered, Coiled Spring, or Smart Money
+  useEffect(() => {
+    const loadCached = async () => {
+      // Only load cached results for screeners that support it
+      if (screenerType !== 'undiscovered' && screenerType !== 'coiled_spring' && screenerType !== 'smart_money') {
+        setIsCached(false);
+        setLastUpdated(null);
+        return;
+      }
+
+      setLoadingCached(true);
+      setError(null);
+
+      try {
+        console.log(`[StockScreener] Loading cached results for: ${screenerType}`);
+
+        const cached = await loadCachedScreenerResults(screenerType);
+
+        if (cached) {
+          setResponse(cached.data);
+          setLastUpdated(cached.lastUpdated);
+          setIsCached(true);
+          console.log(`[StockScreener] Loaded cached results:`, {
+            screener: screenerType,
+            resultCount: cached.data.results.length,
+            lastUpdated: cached.lastUpdated
+          });
+        } else {
+          console.log(`[StockScreener] No cached results found for: ${screenerType}`);
+          setResponse(null);
+          setIsCached(false);
+          setLastUpdated(null);
+        }
+      } catch (err: any) {
+        console.error(`[StockScreener] Error loading cached results:`, err);
+        // Don't show error to user - just fall back to real-time screening
+        setIsCached(false);
+        setLastUpdated(null);
+      } finally {
+        setLoadingCached(false);
+      }
+    };
+
+    loadCached();
+  }, [screenerType]);
+
   /**
-   * Handle "RUN SCREEN" button click
+   * Handle "RUN SCREEN" button click (runs real-time screening, not cached)
    */
   const handleRunScreen = async () => {
     setLoading(true);
     setError(null);
+    setIsCached(false);  // Mark as real-time results
+    setLastUpdated(null);
 
     try {
       let result: ScreenerResponse;
@@ -136,6 +194,7 @@ const StockScreenerPage: React.FC = () => {
       }
 
       setResponse(result);
+      setLastUpdated(new Date().toISOString());  // Set current time as last updated
     } catch (err: any) {
       console.error('Screening error:', err);
       setError(err.response?.data?.detail || 'Failed to run screener. Please try again.');
@@ -230,6 +289,61 @@ const StockScreenerPage: React.FC = () => {
       <div className="screener-description-box">
         {SCREENER_DESCRIPTIONS[screenerType]}
       </div>
+
+      {/* Cache Status Banner (for Undiscovered and Coiled Spring) */}
+      {(screenerType === 'undiscovered' || screenerType === 'coiled_spring') && (
+        <div style={{
+          padding: '12px 20px',
+          margin: '10px 0',
+          borderRadius: '8px',
+          background: isCached ? '#e8f5e9' : '#fff8e1',
+          border: `1px solid ${isCached ? '#4caf50' : '#ffc107'}`,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            {loadingCached ? (
+              <span>⏳ Loading cached results...</span>
+            ) : isCached && lastUpdated ? (
+              <>
+                <span style={{ fontWeight: 'bold', color: '#2e7d32' }}>
+                  ✓ Cached Results
+                </span>
+                <span style={{ marginLeft: '10px', color: '#666' }}>
+                  Last updated: {formatLastUpdated(lastUpdated)}
+                </span>
+                {isCachedResultStale(lastUpdated) && (
+                  <span style={{ marginLeft: '10px', color: '#ff6f00' }}>
+                    ⚠️ Data may be stale (&gt;24 hours old)
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ color: '#f57c00' }}>
+                ⚡ Real-time screening available - click "RUN SCREEN" below
+              </span>
+            )}
+          </div>
+          {isCached && (
+            <button
+              onClick={handleRunScreen}
+              disabled={loading}
+              style={{
+                padding: '6px 12px',
+                background: '#2196f3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              {loading ? 'Refreshing...' : '🔄 Refresh Now'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Conditional Filters Based on Screener Type */}
       <div className="screener-section">

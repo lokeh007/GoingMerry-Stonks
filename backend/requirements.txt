@@ -10,6 +10,9 @@ requests==2.32.4
 # Market Data
 yfinance==0.2.66
 
+# Google Cloud Services
+google-cloud-firestore==2.21.0
+
 # Scientific Computing & Financial Models
 numpy==1.26.4
 scipy==1.11.4

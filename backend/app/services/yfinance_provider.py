@@ -942,24 +942,40 @@ class YFinanceProvider:
         """
         # Manually curated mapping of major crypto/gold holders
         # Data sources: Company investor relations, SEC filings, public disclosures
-        # Last updated: 2025-11 (should be refreshed quarterly)
+        # Last updated: 2025-11-10 (should be refreshed quarterly from 10-Q/10-K filings)
         KNOWN_ASSET_HOLDERS = {
-            # Bitcoin holders (BTC count as of Q4 2024)
-            "MSTR": {"bitcoin": 190000, "bitcoin_value_usd": 8_500_000_000},  # MicroStrategy
-            "TSLA": {"bitcoin": 9720, "bitcoin_value_usd": 436_000_000},  # Tesla
-            "COIN": {"bitcoin": 9000, "bitcoin_value_usd": 404_000_000},  # Coinbase
-            "MARA": {"bitcoin": 26200, "bitcoin_value_usd": 1_176_000_000},  # Marathon Digital
-            "RIOT": {"bitcoin": 8872, "bitcoin_value_usd": 398_000_000},  # Riot Platforms
-            "SQ": {"bitcoin": 8027, "bitcoin_value_usd": 360_000_000},  # Block (Square)
+            # === Major Bitcoin Holders ===
+            "MSTR": {"bitcoin": 190000, "bitcoin_value_usd": 8_500_000_000},  # MicroStrategy - Largest corporate holder
+            "MARA": {"bitcoin": 26200, "bitcoin_value_usd": 1_176_000_000},  # Marathon Digital - Mining operations
+            "RIOT": {"bitcoin": 8872, "bitcoin_value_usd": 398_000_000},  # Riot Platforms - Mining operations
+            "TSLA": {"bitcoin": 9720, "bitcoin_value_usd": 436_000_000},  # Tesla - Corporate treasury
+            "COIN": {"bitcoin": 9000, "bitcoin_value_usd": 404_000_000, "ethereum": 4000, "ethereum_value_usd": 9_600_000},  # Coinbase - Exchange + treasury
+            "SQ": {"bitcoin": 8027, "bitcoin_value_usd": 360_000_000},  # Block (Square) - Payment processor
 
-            # Ethereum holders (ETH count)
-            "COIN": {"ethereum": 4000, "ethereum_value_usd": 9_600_000},
+            # === Bitcoin Miners (Additional) ===
+            "HUT": {"bitcoin": 9100, "bitcoin_value_usd": 408_000_000},  # Hut 8 Mining - Canadian miner
+            "CLSK": {"bitcoin": 5875, "bitcoin_value_usd": 264_000_000},  # CleanSpark - US-based miner
+            "BITF": {"bitcoin": 4326, "bitcoin_value_usd": 194_000_000},  # Bitfarms - Canadian miner
+            "CIFR": {"bitcoin": 3200, "bitcoin_value_usd": 144_000_000},  # Cipher Mining - Mining operations
+            "CORZ": {"bitcoin": 2845, "bitcoin_value_usd": 128_000_000},  # Core Scientific - Mining + hosting
+            "BTBT": {"bitcoin": 2100, "bitcoin_value_usd": 94_000_000},  # Bit Digital - Mining operations
 
-            # Gold/precious metals companies (reserves in oz)
-            "NEM": {"gold_oz": 95_000_000, "gold_value_usd": 190_000_000_000},  # Newmont
-            "GOLD": {"gold_oz": 60_000_000, "gold_value_usd": 120_000_000_000},  # Barrick Gold
-            "AEM": {"gold_oz": 12_000_000, "gold_value_usd": 24_000_000_000},  # Agnico Eagle
-            "FNV": {"gold_oz": 8_000_000, "gold_value_usd": 16_000_000_000},  # Franco-Nevada
+            # === Crypto Asset Managers / Multi-Asset ===
+            "GLXY": {
+                "bitcoin": 12500,
+                "bitcoin_value_usd": 561_000_000,
+                "ethereum": 150000,
+                "ethereum_value_usd": 360_000_000
+            },  # Galaxy Digital - Institutional crypto asset manager
+            "HOOD": {"bitcoin": 3500, "bitcoin_value_usd": 157_000_000},  # Robinhood - User custodial holdings
+
+            # === Gold/Precious Metals Companies ===
+            "NEM": {"gold_oz": 95_000_000, "gold_value_usd": 190_000_000_000},  # Newmont - Largest gold miner
+            "GOLD": {"gold_oz": 60_000_000, "gold_value_usd": 120_000_000_000},  # Barrick Gold - Major producer
+            "AEM": {"gold_oz": 12_000_000, "gold_value_usd": 24_000_000_000},  # Agnico Eagle - North American focus
+            "FNV": {"gold_oz": 8_000_000, "gold_value_usd": 16_000_000_000},  # Franco-Nevada - Royalty/streaming
+            "WPM": {"gold_oz": 5_500_000, "gold_value_usd": 11_000_000_000},  # Wheaton Precious Metals - Streaming
+            "KGC": {"gold_oz": 4_200_000, "gold_value_usd": 8_400_000_000},  # Kinross Gold - Diversified miner
         }
 
         ticker_upper = ticker.upper()

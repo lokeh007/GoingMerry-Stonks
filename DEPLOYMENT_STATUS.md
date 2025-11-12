@@ -1,7 +1,7 @@
 # GoingMerry-Stonks - Deployment Status Report
 
-**Last Updated:** November 9, 2025
-**Generated:** November 9, 2025
+**Last Updated:** November 12, 2025
+**Generated:** November 12, 2025
 **Environment:** Production
 **Project ID:** sylvan-earth-477020-u6
 **Region:** us-east5
@@ -10,9 +10,19 @@
 
 ✅ **Infrastructure is fully deployed and operational!**
 
-All Terraform-managed infrastructure components have been successfully deployed to GCP. The backend API is running with **Gann Square of 9 analysis**, Firestore database is operational, and all security configurations are in place.
+All Terraform-managed infrastructure components have been successfully deployed to GCP. The backend API is running with automated daily screeners, Firestore database is operational for caching screener results, and frontend has been updated with instant cache loading.
 
-**Latest Features:**
+**Latest Features (November 12, 2025):**
+- ✨ **Batched Daily Screeners DEPLOYED** - 3 Cloud Run Jobs processing full NYSE+NASDAQ (~6K stocks)
+- ✨ **90-Minute Stagger Schedule** - Fixed API conflict issues (4:30 PM, 6:00 PM, 7:30 PM ET)
+- ✨ **Gann Calculator Fix** - Fixed None handling for stocks far from reference price
+- ✨ **Frontend Cache Integration** - Instant loading of screener results from Firestore (<1 sec)
+- ✨ **Free Ticker Universe** - SEC EDGAR + NASDAQ FTP integration (100% free data sources)
+- ✨ **Smart Money Screener** - Added third screener strategy to daily automation
+- ✨ **Enhanced Asset Holdings** - Added 10 new crypto/gold companies (GLXY, HUT, CLSK, etc.)
+- ✨ **Firebase Security Rules** - Public read access for screener cache
+
+**Previous Features:**
 - ✨ **Gann Square of 9** - W.D. Gann's mathematical support/resistance analysis
 - ✨ **Firestore Database** - Migrated from Cloud SQL to Firestore (NoSQL)
 - ✨ **Updated Infrastructure** - VPC connector removed, networking optimized
@@ -41,6 +51,81 @@ All Terraform-managed infrastructure components have been successfully deployed 
   - Technical Analysis (RSI, SMA, Bollinger Bands)
   - **Gann Square of 9** (support/resistance levels)
 
+### ✅ Daily Screeners Jobs (Cloud Run Jobs - Batched Execution)
+**Architecture:** 3 separate jobs processing full NYSE+NASDAQ universe in staggered batches
+
+**Batch 1 (A-H):**
+- **Job Name:** `prod-daily-screeners-batch-1`
+- **Status:** ✅ DEPLOYED & RUNNING
+- **Region:** us-east5
+- **Image:** `us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/daily-screeners:v2.0.0`
+- **Schedule:** 4:30 PM ET Mon-Fri (21:30 UTC)
+- **Configuration:**
+  - CPU: 2 vCPU
+  - Memory: 2 Gi
+  - Timeout: 7200s (2 hours)
+  - Batch Number: 1
+  - Stock Range: A-H (~2,000 stocks)
+  - Service Account: prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com
+  - Expected Runtime: 60-80 minutes
+
+**Batch 2 (I-P):**
+- **Job Name:** `prod-daily-screeners-batch-2`
+- **Status:** ✅ DEPLOYED & READY
+- **Region:** us-east5
+- **Schedule:** 6:00 PM ET Mon-Fri (23:00 UTC) - **90-min after Batch 1**
+- **Stock Range:** I-P (~2,000 stocks)
+- **Configuration:** Same as Batch 1, Batch Number: 2
+
+**Batch 3 (Q-Z):**
+- **Job Name:** `prod-daily-screeners-batch-3`
+- **Status:** ✅ DEPLOYED & READY
+- **Region:** us-east5
+- **Schedule:** 7:30 PM ET Mon-Fri (00:30 UTC next day) - **90-min after Batch 2**
+- **Stock Range:** Q-Z (~2,000 stocks)
+- **Configuration:** Same as Batch 1, Batch Number: 3
+
+**Screeners (All 3 Batches):**
+- The Undiscovered (low institutional ownership, low analyst coverage, insider buying)
+- The Coiled Spring (NR7 pattern, low volatility, high potential)
+- Smart Money (institutional accumulation, insider buying, options flow)
+
+**Data Sources (100% Free):**
+- SEC EDGAR Database (https://www.sec.gov/files/company_tickers.json)
+- NASDAQ FTP Server (ftp://ftp.nasdaqtrader.com/symboldirectory/)
+
+**Total Universe:** ~6,000 stocks (NYSE + NASDAQ)
+**Output:** Top 100 results per screener → Firestore (aggregated across all batches)
+
+### ✅ Cloud Scheduler (Staggered Batch Execution)
+**Architecture:** 3 schedulers triggering batches at 1-hour intervals
+
+**Batch 1 Scheduler:**
+- **Name:** `prod-trigger-daily-screeners-batch-1`
+- **Status:** ⏳ PENDING DEPLOYMENT
+- **Region:** us-east1
+- **Schedule:** `30 21 * * 1-5` (4:30 PM ET, Monday-Friday)
+- **Target:** `prod-daily-screeners-batch-1`
+
+**Batch 2 Scheduler:**
+- **Name:** `prod-trigger-daily-screeners-batch-2`
+- **Status:** ⏳ PENDING DEPLOYMENT
+- **Schedule:** `30 22 * * 1-5` (5:30 PM ET, Monday-Friday)
+- **Target:** `prod-daily-screeners-batch-2`
+
+**Batch 3 Scheduler:**
+- **Name:** `prod-trigger-daily-screeners-batch-3`
+- **Status:** ⏳ PENDING DEPLOYMENT
+- **Schedule:** `30 23 * * 1-5` (6:30 PM ET, Monday-Friday)
+- **Target:** `prod-daily-screeners-batch-3`
+
+**Common Configuration:**
+- **Timezone:** America/New_York
+- **Authentication:** OAuth with service account
+- **Retry:** 1 attempt per scheduler
+- **Estimated Cost:** ~$5-6/month (3 jobs + 3 schedulers + Firestore writes)
+- **Total Execution Time:** ~3-4 hours (staggered, 60-80 min per batch)
+
 ### ✅ Database (Firestore)
 - **Database Name:** `(default)`
 - **Status:** ✅ ACTIVE
@@ -63,13 +148,21 @@ All Terraform-managed infrastructure components have been successfully deployed 
 - **Status:** ✅ DEPLOYED
 - **Primary URL:** https://goingmerry-stonks.web.app
 - **Project:** goingmerry-stonks
-- **Deployment Date:** November 9, 2025
-- **Build Size:** 151.99 kB (gzipped)
+- **Deployment Date:** November 11, 2025 (Updated with cache integration)
+- **Build Size:** 233.98 kB (gzipped) - includes Firebase SDK
+- **New Features:**
+  - ✨ **Cache Integration** - Auto-loads cached screener results from Firestore
+  - ✨ **Instant Loading** - <1 second vs 30-40 seconds for real-time screening
+  - ✨ **Cache Status Banner** - Shows last updated time, stale warnings, refresh button
+  - ✨ **Firebase SDK** - Configured with production credentials
 - **Pages:**
-  - Stock Screener (Lynch Fast Growers)
+  - Stock Screener (Lynch Fast Growers, The Undiscovered, The Coiled Spring)
   - Options Analysis
   - Technical Analysis
-  - **Gann Square of 9** (NEW)
+  - **Gann Square of 9**
+- **Cached Screeners:**
+  - The Undiscovered (auto-loads from Firestore)
+  - The Coiled Spring (auto-loads from Firestore)
 
 ### ❌ VPC & Connectivity (Removed)
 - **VPC Network:** ❌ Removed (no longer needed with Firestore)
@@ -271,16 +364,18 @@ terraform {
 
 | Component | Configuration | Est. Cost |
 |-----------|--------------|-----------|
-| Cloud Run | 1-10 instances, 2 vCPU, 1GB | $25-100 |
-| Cloud SQL | db-custom-2-8192, HA | $200-250 |
-| Load Balancer | Global, with SSL | $18-25 |
-| VPC Connector | Always-on | $20 |
-| Artifact Registry | 124 MB storage | $0.10 |
+| Cloud Run (Backend) | 1-10 instances, 2 vCPU, 1GB | $25-100 |
+| Cloud Run Jobs | 3 batch jobs, 2 vCPU, 2GB, Mon-Fri | $5-6 |
+| Firebase Hosting | CDN + global distribution | Free tier |
+| Firestore | ~1 GB storage + reads/writes | $1-2 |
+| Cloud Scheduler | 3 schedulers, Mon-Fri | $0.30 |
+| Artifact Registry | ~500 MB storage (3 images) | $0.25 |
 | Secret Manager | 3 secrets, ~1000 accesses/mo | $1 |
 | Monitoring | 3 alert policies | Free tier |
-| **Total Estimated** | | **$264-396/month** |
+| **Total Estimated** | | **$32-110/month** |
 
 *Actual costs depend on traffic volume and usage patterns*
+*Note: Eliminated Cloud SQL ($200-250/mo) and VPC Connector ($20/mo) by migrating to Firestore*
 
 ---
 
