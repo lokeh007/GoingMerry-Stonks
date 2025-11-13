@@ -309,6 +309,9 @@ class DailyScreenerJob:
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
         logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
+        if failed_tickers:
+            logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
+                       (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
@@ -407,6 +410,9 @@ class DailyScreenerJob:
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
         logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
+        if failed_tickers:
+            logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
+                       (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
@@ -557,7 +563,7 @@ class DailyScreenerJob:
                 options_flow = self.yf_provider.get_options_flow_metrics(ticker)
 
                 # Check for API errors (timeout, rate limit, etc.)
-                if "error" in options_flow:
+                if options_flow.get("error") is not None:
                     raise Exception(options_flow["error"])
 
                 # Skip if no options data
