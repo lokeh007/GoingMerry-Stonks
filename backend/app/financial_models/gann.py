@@ -95,6 +95,59 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# Gann Square of 9 Constants
+# ============================================================
+
+# Cardinal angles (strongest levels) - 90°, 180°, 270°, 360°
+CARDINAL_ANGLES = [90, 180, 270, 360]
+
+# Diagonal angles (secondary levels) - 45°, 135°, 225°, 315°
+DIAGONAL_ANGLES = [45, 135, 225, 315]
+
+# All key angles combined
+KEY_ANGLES = CARDINAL_ANGLES + DIAGONAL_ANGLES
+
+
+# ============================================================
+# Helper Functions
+# ============================================================
+
+def _calculate_price_at_angle(
+    center_price: float, angle: int, rotation: int, direction: str
+) -> float:
+    """
+    Calculate price at specific angle and rotation on Gann Square of 9 spiral.
+
+    This is a shared helper function used by both the cached calculation
+    and the class methods to ensure consistency.
+
+    Args:
+        center_price: Reference/center price for the calculation
+        angle: Angle in degrees (45, 90, 135, 180, 225, 270, 315, 360)
+        rotation: Rotation number (1, 2, 3, ...) representing distance from center
+        direction: 'up' for resistance, 'down' for support
+
+    Returns:
+        Calculated price at the specified angle and rotation
+
+    Example:
+        >>> _calculate_price_at_angle(100.0, 180, 1, "up")
+        110.25  # sqrt(100) + (1 * 180/360) = 10.5, then 10.5^2 = 110.25
+    """
+    sqrt_center = math.sqrt(center_price)
+    angular_increment = (angle / 360.0) * rotation
+
+    if direction == "up":
+        price_sqrt = sqrt_center + angular_increment
+    else:
+        price_sqrt = sqrt_center - angular_increment
+
+    if price_sqrt <= 0:
+        return 0
+
+    return price_sqrt ** 2
+
 
 @dataclass
 class GannLevel:
@@ -141,38 +194,17 @@ def _calculate_gann_levels_cached(
     Note:
         This is a module-level function (not a method) to enable LRU caching.
         Instance methods cannot be effectively cached with lru_cache.
+
+        The tolerance parameter is intentionally NOT part of the cache key because
+        it only affects position classification (via _determine_position()), not the
+        actual price level calculations. This allows the same calculated levels to be
+        reused with different tolerance thresholds for ~100x performance improvement.
     """
-    # Cardinal angles (strongest levels)
-    CARDINAL_ANGLES = [90, 180, 270, 360]
-
-    # Diagonal angles (secondary levels)
-    DIAGONAL_ANGLES = [45, 135, 225, 315]
-
-    # All key angles combined
-    KEY_ANGLES = CARDINAL_ANGLES + DIAGONAL_ANGLES
-
-    def calculate_price_at_angle(
-        center_price: float, angle: int, rotation: int, direction: str
-    ) -> float:
-        """Calculate price at specific angle and rotation."""
-        sqrt_center = math.sqrt(center_price)
-        angular_increment = (angle / 360.0) * rotation
-
-        if direction == "up":
-            price_sqrt = sqrt_center + angular_increment
-        else:
-            price_sqrt = sqrt_center - angular_increment
-
-        if price_sqrt <= 0:
-            return 0
-
-        return price_sqrt ** 2
-
     # Calculate support levels (below reference price)
     support_levels = []
     for rotation in range(1, num_levels + 1):
         for angle in KEY_ANGLES:
-            price = calculate_price_at_angle(reference_price, angle, rotation, "down")
+            price = _calculate_price_at_angle(reference_price, angle, rotation, "down")
             if price > 0 and price < reference_price:
                 support_levels.append(round(price, 2))
 
@@ -180,7 +212,7 @@ def _calculate_gann_levels_cached(
     resistance_levels = []
     for rotation in range(1, num_levels + 1):
         for angle in KEY_ANGLES:
-            price = calculate_price_at_angle(reference_price, angle, rotation, "up")
+            price = _calculate_price_at_angle(reference_price, angle, rotation, "up")
             if price > reference_price:
                 resistance_levels.append(round(price, 2))
 
@@ -189,7 +221,7 @@ def _calculate_gann_levels_cached(
     resistance_levels = sorted(list(set(resistance_levels)))
 
     logger.debug(
-        f"[CACHE MISS] Calculated {len(support_levels)} support and "
+        f"Calculated {len(support_levels)} support and "
         f"{len(resistance_levels)} resistance levels for "
         f"current={current_price:.2f}, ref={reference_price:.2f}, num_levels={num_levels}"
     )
@@ -220,14 +252,10 @@ class GannSquareCalculator:
     stronger than diagonal angles (45°, 135°, 225°, 315°).
     """
 
-    # Cardinal angles (strongest levels)
-    CARDINAL_ANGLES = [90, 180, 270, 360]
-
-    # Diagonal angles (secondary levels)
-    DIAGONAL_ANGLES = [45, 135, 225, 315]
-
-    # All key angles combined
-    KEY_ANGLES = CARDINAL_ANGLES + DIAGONAL_ANGLES
+    # Use module-level constants (defined at top of file)
+    CARDINAL_ANGLES = CARDINAL_ANGLES
+    DIAGONAL_ANGLES = DIAGONAL_ANGLES
+    KEY_ANGLES = KEY_ANGLES
 
     # Number of levels to calculate up and down
     DEFAULT_LEVELS = 5
@@ -263,6 +291,9 @@ class GannSquareCalculator:
 
         if not 1 <= num_levels <= 10:
             raise ValueError(f"num_levels must be between 1 and 10, got {num_levels}")
+
+        if not 0.001 <= tolerance <= 0.10:
+            raise ValueError(f"tolerance must be between 0.001 and 0.10, got {tolerance}")
 
         if reference_price is None:
             reference_price = current_price
@@ -310,24 +341,42 @@ class GannSquareCalculator:
                         level_type="resistance"
                     ))
 
-        # Remove duplicates based on price (keep first occurrence)
-        seen_support_prices = set()
-        unique_support = []
-        for level in support_levels_detailed:
-            if level.price not in seen_support_prices:
-                seen_support_prices.add(level.price)
-                unique_support.append(level)
+        # Remove duplicates based on price, prioritizing 'major' strength and lowest rotation
+        def _prioritize_levels(levels: List[GannLevel]) -> List[GannLevel]:
+            """
+            Remove duplicate prices, keeping the most significant level.
 
-        seen_resistance_prices = set()
-        unique_resistance = []
-        for level in resistance_levels_detailed:
-            if level.price not in seen_resistance_prices:
-                seen_resistance_prices.add(level.price)
-                unique_resistance.append(level)
+            When multiple angle/rotation combinations produce the same price,
+            prioritize by:
+            1. Strength: 'major' (cardinal angles) over 'minor' (diagonal angles)
+            2. Rotation: Lower rotation numbers over higher (closer to reference)
+
+            This ensures we keep the most meaningful level when duplicates exist.
+            """
+            from collections import defaultdict
+
+            price_to_levels: Dict[float, List[GannLevel]] = defaultdict(list)
+            for level in levels:
+                price_to_levels[level.price].append(level)
+
+            prioritized = []
+            for price, group in price_to_levels.items():
+                # Sort by: 1) strength ('major' first), 2) rotation (lower first)
+                best_level = sorted(
+                    group,
+                    key=lambda x: (0 if x.strength == "major" else 1, x.rotation)
+                )[0]
+                prioritized.append(best_level)
+
+            return prioritized
+
+        # Apply prioritization to both support and resistance levels
+        support_levels_detailed = _prioritize_levels(support_levels_detailed)
+        resistance_levels_detailed = _prioritize_levels(resistance_levels_detailed)
 
         # Sort by price
-        support_levels_detailed = sorted(unique_support, key=lambda x: x.price)
-        resistance_levels_detailed = sorted(unique_resistance, key=lambda x: x.price)
+        support_levels_detailed = sorted(support_levels_detailed, key=lambda x: x.price)
+        resistance_levels_detailed = sorted(resistance_levels_detailed, key=lambda x: x.price)
 
         # Find nearest levels
         support_below = [s for s in support_levels_detailed if s.price < current_price]
@@ -388,6 +437,9 @@ class GannSquareCalculator:
 
             if not 1 <= num_levels <= 10:
                 raise ValueError(f"num_levels must be between 1 and 10, got {num_levels}")
+
+            if not 0.001 <= tolerance <= 0.10:
+                raise ValueError(f"tolerance must be between 0.001 and 0.10, got {tolerance}")
 
             if reference_price is None:
                 reference_price = current_price
@@ -510,22 +562,8 @@ class GannSquareCalculator:
             - 360° rotation 1 up: sqrt=10+(1×360/360)=11, price=121
             - Full rotation (360°) always adds 1 to sqrt, or ~21% to price
         """
-        sqrt_center = math.sqrt(center_price)
-
-        # Calculate the angular distance in the spiral
-        # Each rotation at a given angle represents a step along that angle
-        angular_increment = (angle / 360.0) * rotation
-
-        if direction == "up":
-            price_sqrt = sqrt_center + angular_increment
-        else:
-            price_sqrt = sqrt_center - angular_increment
-
-        # Ensure non-negative sqrt value
-        if price_sqrt <= 0:
-            return 0
-
-        return price_sqrt ** 2
+        # Delegate to the module-level helper function to avoid code duplication
+        return _calculate_price_at_angle(center_price, angle, rotation, direction)
 
     def _calculate_levels(
         self, reference_price: float, direction: str, num_levels: int
