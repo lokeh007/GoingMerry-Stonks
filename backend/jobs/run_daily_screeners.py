@@ -3,14 +3,16 @@
 Daily Stock Screeners - Cloud Run Job (Batched Execution)
 
 Runs The Undiscovered, The Coiled Spring, and Smart Money screeners against the full
-NYSE + NASDAQ universe (~6000 stocks) in 3 batches to respect yfinance rate limits.
+NYSE + NASDAQ universe (~6000 stocks) in 5 batches to respect yfinance rate limits.
 
 Batch Schedule:
-- Batch 1: 4:30 PM ET - Tickers A-H (~2000 stocks)
-- Batch 2: 5:30 PM ET - Tickers I-P (~2000 stocks)
-- Batch 3: 6:30 PM ET - Tickers Q-Z (~2000 stocks)
+- Batch 1: 4:30 PM ET - Tickers A-D (~1200 stocks)
+- Batch 2: 6:00 PM ET - Tickers E-J (~1200 stocks)
+- Batch 3: 7:30 PM ET - Tickers K-N (~1200 stocks)
+- Batch 4: 9:00 PM ET - Tickers O-S (~1200 stocks)
+- Batch 5: 10:30 PM ET - Tickers T-Z (~1200 stocks)
 
-Estimated runtime per batch: 60-80 minutes
+Estimated runtime per batch: 40-60 minutes
 Data sources: SEC EDGAR + NASDAQ FTP (free, no API keys required)
 """
 
@@ -58,7 +60,7 @@ class DailyScreenerJob:
         self.batch_number = batch_number
 
         if batch_number:
-            logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/3")
+            logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
 
     def get_full_exchange_universe(self) -> List[str]:
         """
@@ -75,12 +77,12 @@ class DailyScreenerJob:
 
         Returns:
             List of ticker symbols:
-            - Batch mode: ~2000 stocks per batch
+            - Batch mode: ~1200 stocks per batch
             - Legacy mode: ~109 representative stocks
         """
         if self.batch_number:
             # Batched execution: Get stocks for this specific batch
-            logger.info(f"Fetching batch {self.batch_number}/3 from full NYSE + NASDAQ universe...")
+            logger.info(f"Fetching batch {self.batch_number}/5 from full NYSE + NASDAQ universe...")
             universe = self.ticker_provider.get_batch_universe(self.batch_number)
             logger.info(
                 f"Batch {self.batch_number}: {len(universe)} stocks "
@@ -674,9 +676,11 @@ def main():
 
     Usage:
         python run_daily_screeners.py        # Legacy mode (109 stocks)
-        python run_daily_screeners.py 1      # Batch 1 (A-H, ~2000 stocks)
-        python run_daily_screeners.py 2      # Batch 2 (I-P, ~2000 stocks)
-        python run_daily_screeners.py 3      # Batch 3 (Q-Z, ~2000 stocks)
+        python run_daily_screeners.py 1      # Batch 1 (A-D, ~1200 stocks)
+        python run_daily_screeners.py 2      # Batch 2 (E-J, ~1200 stocks)
+        python run_daily_screeners.py 3      # Batch 3 (K-N, ~1200 stocks)
+        python run_daily_screeners.py 4      # Batch 4 (O-S, ~1200 stocks)
+        python run_daily_screeners.py 5      # Batch 5 (T-Z, ~1200 stocks)
     """
     # Get batch number from command line or environment variable
     batch_number = None
@@ -685,8 +689,8 @@ def main():
     if len(sys.argv) > 1:
         try:
             batch_number = int(sys.argv[1])
-            if batch_number not in [1, 2, 3]:
-                logger.error(f"Invalid batch number: {batch_number}. Must be 1, 2, or 3.")
+            if batch_number not in [1, 2, 3, 4, 5]:
+                logger.error(f"Invalid batch number: {batch_number}. Must be 1, 2, 3, 4, or 5.")
                 sys.exit(1)
         except ValueError:
             logger.error(f"Invalid batch number: {sys.argv[1]}. Must be an integer.")
@@ -696,8 +700,8 @@ def main():
     if batch_number is None and os.getenv("BATCH_NUMBER"):
         try:
             batch_number = int(os.getenv("BATCH_NUMBER"))
-            if batch_number not in [1, 2, 3]:
-                logger.error(f"Invalid BATCH_NUMBER env var: {batch_number}. Must be 1, 2, or 3.")
+            if batch_number not in [1, 2, 3, 4, 5]:
+                logger.error(f"Invalid BATCH_NUMBER env var: {batch_number}. Must be 1, 2, 3, 4, or 5.")
                 sys.exit(1)
         except ValueError:
             logger.error(f"Invalid BATCH_NUMBER env var: {os.getenv('BATCH_NUMBER')}. Must be an integer.")
@@ -705,8 +709,8 @@ def main():
 
     # Log execution mode
     if batch_number:
-        logger.info(f"Starting Daily Screener Job - BATCH {batch_number}/3")
-        logger.info(f"Will screen ~2000 stocks from full NYSE/NASDAQ universe")
+        logger.info(f"Starting Daily Screener Job - BATCH {batch_number}/5")
+        logger.info(f"Will screen ~1200 stocks from full NYSE/NASDAQ universe")
     else:
         logger.info("Starting Daily Screener Job - LEGACY MODE")
         logger.info("Will screen ~109 representative stocks (for testing)")

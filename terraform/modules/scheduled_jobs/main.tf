@@ -1,10 +1,12 @@
 # Terraform Module: Scheduled Jobs
 #
-# Creates 3 Cloud Run Jobs and Cloud Schedulers to run daily stock screeners
+# Creates 5 Cloud Run Jobs and Cloud Schedulers to run daily stock screeners
 # in batches after market close, with staggered execution times:
-# - Batch 1: 4:30 PM ET (stocks A-H, ~2000 tickers)
-# - Batch 2: 5:30 PM ET (stocks I-P, ~2000 tickers)
-# - Batch 3: 6:30 PM ET (stocks Q-Z, ~2000 tickers)
+# - Batch 1: 4:30 PM ET (stocks A-D, ~1200 tickers)
+# - Batch 2: 6:00 PM ET (stocks E-J, ~1200 tickers)
+# - Batch 3: 7:30 PM ET (stocks K-N, ~1200 tickers)
+# - Batch 4: 9:00 PM ET (stocks O-S, ~1200 tickers)
+# - Batch 5: 10:30 PM ET (stocks T-Z, ~1200 tickers)
 
 terraform {
   required_version = ">= 1.0"
@@ -92,27 +94,39 @@ locals {
   batches = {
     batch-1 = {
       number      = 1
-      description = "Daily stock screeners - Batch 1 (A-H, ~2000 stocks)"
+      description = "Daily stock screeners - Batch 1 (A-D, ~1200 stocks)"
       schedule    = "30 21 * * 1-5"  # 4:30 PM ET = 21:30 UTC
       time_label  = "4:30 PM ET"
     }
     batch-2 = {
       number      = 2
-      description = "Daily stock screeners - Batch 2 (I-P, ~2000 stocks)"
+      description = "Daily stock screeners - Batch 2 (E-J, ~1200 stocks)"
       schedule    = "0 23 * * 1-5"   # 6:00 PM ET = 23:00 UTC (90 min after batch-1)
       time_label  = "6:00 PM ET"
     }
     batch-3 = {
       number      = 3
-      description = "Daily stock screeners - Batch 3 (Q-Z, ~2000 stocks)"
+      description = "Daily stock screeners - Batch 3 (K-N, ~1200 stocks)"
       schedule    = "30 0 * * 2-6"   # 7:30 PM ET = 00:30 UTC next day (90 min after batch-2)
       time_label  = "7:30 PM ET"
+    }
+    batch-4 = {
+      number      = 4
+      description = "Daily stock screeners - Batch 4 (O-S, ~1200 stocks)"
+      schedule    = "0 2 * * 2-6"    # 9:00 PM ET = 02:00 UTC next day (90 min after batch-3)
+      time_label  = "9:00 PM ET"
+    }
+    batch-5 = {
+      number      = 5
+      description = "Daily stock screeners - Batch 5 (T-Z, ~1200 stocks)"
+      schedule    = "30 3 * * 2-6"   # 10:30 PM ET = 03:30 UTC next day (90 min after batch-4)
+      time_label  = "10:30 PM ET"
     }
   }
 }
 
 # ============================================================================
-# CLOUD RUN JOBS - Daily Screeners (3 Batches)
+# CLOUD RUN JOBS - Daily Screeners (5 Batches)
 # ============================================================================
 
 resource "google_cloud_run_v2_job" "daily_screeners_batch" {
@@ -194,7 +208,7 @@ resource "google_cloud_run_v2_job" "daily_screeners_batch" {
 }
 
 # ============================================================================
-# CLOUD SCHEDULER - Trigger Daily Jobs (3 Schedules)
+# CLOUD SCHEDULER - Trigger Daily Jobs (5 Schedules)
 # ============================================================================
 
 resource "google_cloud_scheduler_job" "trigger_daily_screeners_batch" {
