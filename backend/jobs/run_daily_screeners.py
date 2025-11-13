@@ -666,6 +666,8 @@ class DailyScreenerJob:
 
     def run(self):
         """Main execution method."""
+        job_start_time = datetime.now()
+
         logger.info("=" * 80)
         logger.info("DAILY STOCK SCREENERS - Starting execution")
         logger.info(f"Timestamp: {self.run_timestamp}")
@@ -695,8 +697,14 @@ class DailyScreenerJob:
                     logger.error(traceback.format_exc())
                     continue
 
+            # Calculate and log total job execution time
+            total_execution_time = (datetime.now() - job_start_time).total_seconds()
+            total_minutes = int(total_execution_time // 60)
+            total_seconds = int(total_execution_time % 60)
+
             logger.info("=" * 80)
             logger.info("DAILY STOCK SCREENERS - Completed successfully")
+            logger.info(f"⏱  Total execution time: {total_minutes}m {total_seconds}s ({total_execution_time:.1f} seconds)")
             logger.info("=" * 80)
 
             return {"status": "success", "timestamp": self.run_timestamp.isoformat()}
