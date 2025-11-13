@@ -65,30 +65,34 @@ class TickerUniverseProvider:
 
     def get_batch_universe(self, batch_number: int) -> List[str]:
         """
-        Get ticker universe for a specific batch (1, 2, or 3).
+        Get ticker universe for a specific batch (1, 2, 3, 4, or 5).
 
         Splits alphabetically:
-        - Batch 1: A-H
-        - Batch 2: I-P
-        - Batch 3: Q-Z
+        - Batch 1: A-D (~1200 stocks)
+        - Batch 2: E-J (~1200 stocks)
+        - Batch 3: K-N (~1200 stocks)
+        - Batch 4: O-S (~1200 stocks)
+        - Batch 5: T-Z (~1200 stocks)
 
         Args:
-            batch_number: Batch number (1, 2, or 3)
+            batch_number: Batch number (1, 2, 3, 4, or 5)
 
         Returns:
-            List of ticker symbols for this batch (~2000 stocks)
+            List of ticker symbols for this batch (~1200 stocks)
         """
-        if batch_number not in [1, 2, 3]:
-            raise ValueError(f"batch_number must be 1, 2, or 3. Got: {batch_number}")
+        if batch_number not in [1, 2, 3, 4, 5]:
+            raise ValueError(f"batch_number must be 1, 2, 3, 4, or 5. Got: {batch_number}")
 
         # Get full universe
         full_universe = self.get_full_universe()
 
-        # Split alphabetically
+        # Split alphabetically into 5 batches
         batch_ranges = {
-            1: ("A", "H"),  # A-H
-            2: ("I", "P"),  # I-P
-            3: ("Q", "Z"),  # Q-Z
+            1: ("A", "D"),  # A-D
+            2: ("E", "J"),  # E-J
+            3: ("K", "N"),  # K-N
+            4: ("O", "S"),  # O-S
+            5: ("T", "Z"),  # T-Z
         }
 
         start_letter, end_letter = batch_ranges[batch_number]
@@ -348,20 +352,13 @@ if __name__ == "__main__":
     print(f"Total: {len(universe)} stocks")
     print(f"Sample: {universe[:10]}")
 
-    # Test batch 1
-    print("\n=== Batch 1 (A-H) ===")
-    batch1 = provider.get_batch_universe(1)
-    print(f"Total: {len(batch1)} stocks")
-    print(f"Range: {batch1[0]} to {batch1[-1]}")
-
-    # Test batch 2
-    print("\n=== Batch 2 (I-P) ===")
-    batch2 = provider.get_batch_universe(2)
-    print(f"Total: {len(batch2)} stocks")
-    print(f"Range: {batch2[0]} to {batch2[-1]}")
-
-    # Test batch 3
-    print("\n=== Batch 3 (Q-Z) ===")
-    batch3 = provider.get_batch_universe(3)
-    print(f"Total: {len(batch3)} stocks")
-    print(f"Range: {batch3[0]} to {batch3[-1]}")
+    # Test all 5 batches
+    for batch_num in range(1, 6):
+        batch_ranges = {
+            1: "A-D", 2: "E-J", 3: "K-N", 4: "O-S", 5: "T-Z"
+        }
+        print(f"\n=== Batch {batch_num} ({batch_ranges[batch_num]}) ===")
+        batch = provider.get_batch_universe(batch_num)
+        print(f"Total: {len(batch)} stocks")
+        if batch:
+            print(f"Range: {batch[0]} to {batch[-1]}")
