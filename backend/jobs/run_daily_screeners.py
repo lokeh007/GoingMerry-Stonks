@@ -109,12 +109,21 @@ class DailyScreenerJob:
             'no fundamentals' in error_msg
         )
 
+        # Check if it's a rate limit or timeout error
+        is_rate_limit = 'rate limit' in error_msg or 'too many requests' in error_msg
+        is_timeout = 'timeout' in error_msg or 'timed out' in error_msg
+
         if is_404:
             # Expected - ticker doesn't exist or no data available
             not_found_tickers.append(ticker)
         else:
-            # Unexpected error - log for debugging
-            logger.warning(f"Unexpected error screening {ticker}: {error}")
+            # Unexpected error - log for debugging with specific error type
+            if is_rate_limit:
+                logger.warning(f"Rate limit error for {ticker}: {error}")
+            elif is_timeout:
+                logger.warning(f"Timeout error for {ticker}: {error}")
+            else:
+                logger.warning(f"Unexpected error screening {ticker}: {error}")
             failed_tickers.append(ticker)
 
     def _log_progress(self, current: int, total: int, start_time: datetime) -> None:
@@ -547,6 +556,10 @@ class DailyScreenerJob:
                 # Get options flow metrics
                 options_flow = self.yf_provider.get_options_flow_metrics(ticker)
 
+                # Check for API errors (timeout, rate limit, etc.)
+                if "error" in options_flow:
+                    raise Exception(options_flow["error"])
+
                 # Skip if no options data
                 if options_flow.get("call_volume") is None or options_flow.get("put_volume") is None:
                     continue
@@ -600,6 +613,9 @@ class DailyScreenerJob:
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
         logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
+        if failed_tickers:
+            logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
+                       (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
