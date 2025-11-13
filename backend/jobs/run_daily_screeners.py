@@ -43,9 +43,15 @@ class Suppress404Filter(logging.Filter):
     """Custom filter to suppress 404 errors from yfinance while preserving other errors."""
 
     def filter(self, record):
-        """Filter out 404-related log messages."""
+        """
+        Return False for 404-related messages to filter them out, True otherwise.
+
+        Uses word boundary matching for '404' to avoid false positives
+        (e.g., "4040" in timeout messages).
+        """
         msg = record.getMessage().lower()
-        return not any(keyword in msg for keyword in ["404", "not found"])
+        # Use word boundary matching to avoid false positives (e.g., "4040" in timeout messages)
+        return not (re.search(r'\b404\b', msg) or "not found" in msg)
 
 
 # Suppress yfinance ERROR logging for 404s only (preserves real errors)
