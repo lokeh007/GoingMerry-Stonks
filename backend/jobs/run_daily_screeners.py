@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 class Suppress404Filter(logging.Filter):
     """Custom filter to suppress 404 errors from yfinance while preserving other errors."""
 
+    # Compile regex once at class level for performance
+    _404_PATTERN = re.compile(r'\b404\b')
+
     def filter(self, record):
         """
         Return False for 404-related messages to filter them out, True otherwise.
@@ -50,8 +53,7 @@ class Suppress404Filter(logging.Filter):
         (e.g., "4040" in timeout messages).
         """
         msg = record.getMessage().lower()
-        # Use word boundary matching to avoid false positives (e.g., "4040" in timeout messages)
-        return not (re.search(r'\b404\b', msg) or "not found" in msg)
+        return not (self._404_PATTERN.search(msg) or "not found" in msg)
 
 
 # Suppress yfinance ERROR logging for 404s only (preserves real errors)
@@ -61,6 +63,9 @@ yf_logger.addFilter(Suppress404Filter())
 
 class DailyScreenerJob:
     """Orchestrates daily screener execution and Firestore storage."""
+
+    # Compile regex once at class level for performance
+    _404_PATTERN = re.compile(r'\b404\b')
 
     def __init__(self, batch_number: Optional[int] = None):
         """
@@ -97,9 +102,8 @@ class DailyScreenerJob:
         """
         error_msg = str(error).lower()
 
-        # Use word boundary matching to avoid false positives (e.g., "4040" in timeout messages)
         is_404 = (
-            re.search(r'\b404\b', error_msg) or
+            self._404_PATTERN.search(error_msg) or
             'not found' in error_msg or
             'no data' in error_msg or
             'no fundamentals' in error_msg
