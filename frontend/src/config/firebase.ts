@@ -9,8 +9,11 @@
  * - API restrictions (limited to Firebase services only)
  * 
  * Allowed referrers:
+ * - https://goingmerry-stonks.web.app/* (PRIMARY production hosting)
+ * - https://goingmerry-stonks.firebaseapp.com/*
  * - https://sylvan-earth-477020-u6.web.app/*
  * - https://sylvan-earth-477020-u6.firebaseapp.com/*
+ * - http://localhost:3000/* (development)
  * - http://localhost:* (development)
  */
 

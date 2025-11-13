@@ -3,6 +3,7 @@
     "rules": "firestore.rules"
   },
   "hosting": {
+    "site": "goingmerry-stonks",
     "public": "frontend/build",
     "ignore": [
       "firebase.json",
