@@ -2,21 +2,29 @@
  * Firebase Configuration
  *
  * Initializes Firebase app and Firestore for accessing cached screener results.
+ * 
+ * SECURITY NOTE: This API key is intentionally public and protected by:
+ * - HTTP referrer restrictions (only works from approved domains)
+ * - Firestore security rules (restricts data access)
+ * - API restrictions (limited to Firebase services only)
+ * 
+ * Allowed referrers:
+ * - https://sylvan-earth-477020-u6.web.app/*
+ * - https://sylvan-earth-477020-u6.firebaseapp.com/*
+ * - http://localhost:* (development)
  */
 
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
-// Firebase configuration - CORRECTED to use actual GCP project
-// Backend writes to: sylvan-earth-477020-u6
-// Frontend must read from same project!
+// Firebase configuration
+// API key has HTTP referrer and API restrictions applied in GCP Console
 const firebaseConfig = {
-  apiKey: "AIzaSyBPcd7OIEzDDocG8kjfMpRFT8MHUQxwFgQ",
+  apiKey: "AIzaSyBaDXyegUQtJIzybAxfv5vp3U1i6aibZkE",
   authDomain: "sylvan-earth-477020-u6.firebaseapp.com",
-  projectId: "sylvan-earth-477020-u6",  // FIXED: Was "goingmerry-stonks"
+  projectId: "sylvan-earth-477020-u6",
   storageBucket: "sylvan-earth-477020-u6.appspot.com",
   messagingSenderId: "591098440727",
-  // Note: appId is optional for Firestore-only usage
 };
 
 // Initialize Firebase
