@@ -242,9 +242,32 @@ class TickerUniverseProvider:
         - Warrants/Units (ticker length > 5)
         - Preferred stocks (contains -, ., /, ~)
         - Tickers with numbers (usually warrants)
+        - ETFs (known tickers and patterns)
         - Test symbols
         """
+        # Known major ETFs to exclude
+        known_etfs = {
+            # Major index ETFs
+            "SPY", "QQQ", "IWM", "DIA", "VOO", "VTI", "VEA", "VWO", "EEM", "AGG",
+            "BND", "LQD", "HYG", "TLT", "IEF", "SHY", "MUB", "EMB",
+            # Sector ETFs
+            "XLF", "XLE", "XLK", "XLV", "XLI", "XLP", "XLY", "XLU", "XLB", "XLRE",
+            # Commodity/Currency ETFs
+            "GLD", "SLV", "USO", "UNG", "DBA", "DBC", "UUP", "FXE",
+            # Volatility ETFs
+            "VXX", "UVXY", "SVXY", "VIXY",
+            # Leveraged/Inverse (common ones from your logs)
+            "DIG", "DUG", "DDM", "DXD", "SSO", "SDS", "UPRO", "SPXU",
+            "TQQQ", "SQQQ", "FAS", "FAZ", "TNA", "TZA", "NUGT", "DUST",
+            "JNUG", "JDST", "ERX", "ERY", "UGAZ", "DGAZ",
+        }
+
+        # ETF suffixes (leveraged/inverse ETFs)
+        # Examples: DIG, DMX, DGZ, DGP, DJP, etc.
+        etf_suffixes = {"X", "Z", "L", "S", "M"}
+
         filtered = []
+        etf_count = 0
 
         for ticker in tickers:
             ticker = ticker.strip().upper()
@@ -270,11 +293,37 @@ class TickerUniverseProvider:
             if any(char.isdigit() for char in ticker):
                 continue
 
+            # Skip known ETFs
+            if ticker in known_etfs:
+                etf_count += 1
+                continue
+
+            # Skip ETF-like patterns (3-4 letter tickers ending in X, Z, L, S, M)
+            # These are usually leveraged/inverse ETFs: DIG, DMX, DGZ, etc.
+            if len(ticker) <= 4 and ticker[-1] in etf_suffixes:
+                # Allow exceptions for real companies (add as needed)
+                exceptions = {"FLEX", "CEIX", "AIZ"}
+                if ticker not in exceptions:
+                    etf_count += 1
+                    continue
+
+            # Skip tickers that look like ProShares/Direxion patterns
+            # Format: DXX, TXX, UXX, SXX (D=Direxion, T/S=short, U=ultra)
+            if len(ticker) == 3 and ticker[0] in ["D", "T", "U", "S"]:
+                # Allow exceptions for real companies
+                exceptions = {"DNA", "DAL", "DIS", "TPR", "UAL", "UPS"}
+                if ticker not in exceptions:
+                    etf_count += 1
+                    continue
+
             # Skip test symbols
             if ticker in ["TEST", "SAMPLE", "ZVZZT"]:
                 continue
 
             filtered.append(ticker)
+
+        if etf_count > 0:
+            logger.info(f"Filtered out {etf_count} ETFs")
 
         return filtered
 

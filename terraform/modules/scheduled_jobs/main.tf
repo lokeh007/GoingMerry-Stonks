@@ -61,7 +61,7 @@ variable "job_schedule" {
 variable "job_timeout" {
   description = "Job execution timeout in seconds (per batch)"
   type        = number
-  default     = 7200  # 2 hours
+  default     = 10800  # 3 hours (increased from 2 hours for Quick Win)
 }
 
 variable "job_memory" {
