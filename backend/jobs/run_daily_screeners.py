@@ -19,6 +19,7 @@ Data sources: SEC EDGAR + NASDAQ FTP (free, no API keys required)
 import os
 import sys
 import logging
+import re
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import traceback
@@ -37,9 +38,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress yfinance ERROR logging for 404s (reduces log noise)
+
+class Suppress404Filter(logging.Filter):
+    """Custom filter to suppress 404 errors from yfinance while preserving other errors."""
+
+    def filter(self, record):
+        """Filter out 404-related log messages."""
+        msg = record.getMessage().lower()
+        return not any(keyword in msg for keyword in ["404", "not found"])
+
+
+# Suppress yfinance ERROR logging for 404s only (preserves real errors)
 yf_logger = logging.getLogger('yfinance')
-yf_logger.setLevel(logging.CRITICAL)  # Only show CRITICAL errors
+yf_logger.addFilter(Suppress404Filter())
 
 
 class DailyScreenerJob:
@@ -61,6 +72,59 @@ class DailyScreenerJob:
 
         if batch_number:
             logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
+
+    def _categorize_error(
+        self,
+        ticker: str,
+        error: Exception,
+        failed_tickers: List[str],
+        not_found_tickers: List[str]
+    ) -> None:
+        """
+        Categorize ticker errors as 404s or real failures.
+
+        Args:
+            ticker: Stock ticker symbol
+            error: Exception that was raised
+            failed_tickers: List to append real failures to
+            not_found_tickers: List to append 404s to
+        """
+        error_msg = str(error).lower()
+
+        # Use word boundary matching to avoid false positives (e.g., "4040" in timeout messages)
+        is_404 = (
+            re.search(r'\b404\b', error_msg) or
+            'not found' in error_msg or
+            'no data' in error_msg or
+            'no fundamentals' in error_msg
+        )
+
+        if is_404:
+            # Expected - ticker doesn't exist or no data available
+            not_found_tickers.append(ticker)
+        else:
+            # Unexpected error - log for debugging
+            logger.warning(f"Unexpected error screening {ticker}: {error}")
+            failed_tickers.append(ticker)
+
+    def _log_progress(self, current: int, total: int, start_time: datetime) -> None:
+        """
+        Log screening progress with ETA calculation.
+
+        Args:
+            current: Current ticker number being processed
+            total: Total number of tickers to process
+            start_time: Start time of screening operation
+        """
+        elapsed = (datetime.now() - start_time).total_seconds()
+        rate = current / elapsed if elapsed > 0 else 0
+        remaining = total - current
+        eta_seconds = remaining / rate if rate > 0 else 0
+        logger.info(
+            f"Progress: {current}/{total} ({current/total*100:.1f}%) | "
+            f"Rate: {rate:.2f} tickers/sec | "
+            f"ETA: {eta_seconds/60:.1f} min"
+        )
 
     def get_full_exchange_universe(self) -> List[str]:
         """
@@ -170,15 +234,7 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                elapsed = (datetime.now() - start_time).total_seconds()
-                rate = i / elapsed if elapsed > 0 else 0
-                remaining = len(universe) - i
-                eta_seconds = remaining / rate if rate > 0 else 0
-                logger.info(
-                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
-                    f"Rate: {rate:.2f} tickers/sec | "
-                    f"ETA: {eta_seconds/60:.1f} min"
-                )
+                self._log_progress(i, len(universe), start_time)
 
             try:
                 # Get fundamentals
@@ -223,15 +279,7 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                # Categorize errors: 404s vs real failures
-                error_msg = str(e).lower()
-                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
-                    # Expected - ticker doesn't exist or no data available
-                    not_found_tickers.append(ticker)
-                else:
-                    # Unexpected error - log for debugging
-                    logger.warning(f"Unexpected error screening {ticker}: {e}")
-                    failed_tickers.append(ticker)
+                self._categorize_error(ticker, e, failed_tickers, not_found_tickers)
                 continue
 
         # Sort by score (descending)
@@ -289,15 +337,7 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                elapsed = (datetime.now() - start_time).total_seconds()
-                rate = i / elapsed if elapsed > 0 else 0
-                remaining = len(universe) - i
-                eta_seconds = remaining / rate if rate > 0 else 0
-                logger.info(
-                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
-                    f"Rate: {rate:.2f} tickers/sec | "
-                    f"ETA: {eta_seconds/60:.1f} min"
-                )
+                self._log_progress(i, len(universe), start_time)
 
             try:
                 # Get fundamentals and volatility metrics
@@ -337,15 +377,7 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                # Categorize errors: 404s vs real failures
-                error_msg = str(e).lower()
-                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
-                    # Expected - ticker doesn't exist or no data available
-                    not_found_tickers.append(ticker)
-                else:
-                    # Unexpected error - log for debugging
-                    logger.warning(f"Unexpected error screening {ticker}: {e}")
-                    failed_tickers.append(ticker)
+                self._categorize_error(ticker, e, failed_tickers, not_found_tickers)
                 continue
 
         # Sort by consolidation score (descending)
@@ -499,15 +531,7 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                elapsed = (datetime.now() - start_time).total_seconds()
-                rate = i / elapsed if elapsed > 0 else 0
-                remaining = len(universe) - i
-                eta_seconds = remaining / rate if rate > 0 else 0
-                logger.info(
-                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
-                    f"Rate: {rate:.2f} tickers/sec | "
-                    f"ETA: {eta_seconds/60:.1f} min"
-                )
+                self._log_progress(i, len(universe), start_time)
 
             try:
                 # Get options flow metrics
@@ -555,15 +579,7 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                # Categorize errors: 404s vs real failures
-                error_msg = str(e).lower()
-                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
-                    # Expected - ticker doesn't exist or no data available
-                    not_found_tickers.append(ticker)
-                else:
-                    # Unexpected error - log for debugging
-                    logger.warning(f"Unexpected error screening {ticker}: {e}")
-                    failed_tickers.append(ticker)
+                self._categorize_error(ticker, e, failed_tickers, not_found_tickers)
                 continue
 
         # Sort by score (descending)
