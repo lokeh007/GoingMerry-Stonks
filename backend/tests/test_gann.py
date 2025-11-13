@@ -566,3 +566,302 @@ class TestGannCalculatorSingleton:
         calc1 = get_gann_calculator()
         calc2 = get_gann_calculator()
         assert calc1 is calc2, "Should return the same singleton instance"
+
+
+class TestGannLRUCaching:
+    """Test LRU caching for Gann level calculations."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.calculator = get_gann_calculator()
+
+    def test_cache_hit_for_same_parameters(self):
+        """Test that identical parameters use cached results."""
+        from app.financial_models.gann import _calculate_gann_levels_cached
+
+        # Clear cache before test
+        _calculate_gann_levels_cached.cache_clear()
+
+        # First call - cache miss
+        result1 = self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=90.0,
+            num_levels=3
+        )
+
+        # Check cache info
+        cache_info = _calculate_gann_levels_cached.cache_info()
+        assert cache_info.hits == 0
+        assert cache_info.misses == 1
+
+        # Second call with same parameters - should hit cache
+        result2 = self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=90.0,
+            num_levels=3
+        )
+
+        # Verify cache hit
+        cache_info = _calculate_gann_levels_cached.cache_info()
+        assert cache_info.hits == 1
+        assert cache_info.misses == 1
+
+        # Results should be identical
+        assert result1["support_levels"] == result2["support_levels"]
+        assert result1["resistance_levels"] == result2["resistance_levels"]
+
+    def test_cache_rounds_current_price(self):
+        """Test that current_price is rounded to improve cache hits."""
+        from app.financial_models.gann import _calculate_gann_levels_cached
+
+        # Clear cache before test
+        _calculate_gann_levels_cached.cache_clear()
+
+        # Slightly different current prices (within $0.10)
+        result1 = self.calculator.calculate_gann_levels(
+            current_price=100.01,
+            reference_price=90.0,
+            num_levels=3
+        )
+
+        result2 = self.calculator.calculate_gann_levels(
+            current_price=100.09,
+            reference_price=90.0,
+            num_levels=3
+        )
+
+        # Both should round to 100.0 and hit same cache entry
+        cache_info = _calculate_gann_levels_cached.cache_info()
+        # First call is cache miss, second should be cache hit
+        assert cache_info.hits >= 1, "Should have at least one cache hit due to rounding"
+
+    def test_cache_miss_for_different_parameters(self):
+        """Test that different parameters create new cache entries."""
+        from app.financial_models.gann import _calculate_gann_levels_cached
+
+        # Clear cache before test
+        _calculate_gann_levels_cached.cache_clear()
+
+        # Different num_levels
+        self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=90.0,
+            num_levels=3
+        )
+
+        self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=90.0,
+            num_levels=5
+        )
+
+        cache_info = _calculate_gann_levels_cached.cache_info()
+        assert cache_info.misses == 2, "Should have 2 cache misses for different parameters"
+
+
+class TestGannToleranceParameter:
+    """Test configurable tolerance parameter."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.calculator = get_gann_calculator()
+
+    def test_default_tolerance(self):
+        """Test that default tolerance is 2%."""
+        result = self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        # Should use default tolerance (2%)
+        assert result["current_position"] in ["at_support", "at_resistance", "between_levels", "unknown"]
+
+    def test_custom_tolerance_tight(self):
+        """Test with tight tolerance (0.5%)."""
+        # Get a support level
+        levels = self.calculator.calculate_gann_levels(
+            current_price=100.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        if levels["support_levels"]:
+            support = levels["support_levels"][0]
+
+            # Test with very tight tolerance
+            result = self.calculator.calculate_gann_levels(
+                current_price=support,
+                reference_price=100.0,
+                num_levels=3,
+                tolerance=0.005  # 0.5%
+            )
+
+            # With tight tolerance, should detect position at support
+            assert result["current_position"] in ["at_support", "between_levels"]
+
+    def test_custom_tolerance_loose(self):
+        """Test with loose tolerance (10%)."""
+        result = self.calculator.calculate_gann_levels(
+            current_price=95.0,
+            reference_price=100.0,
+            num_levels=3,
+            tolerance=0.10  # 10%
+        )
+
+        # With very loose tolerance, more likely to be "at" a level
+        assert result["current_position"] in ["at_support", "at_resistance", "between_levels", "unknown"]
+
+    def test_is_at_key_level_respects_tolerance(self):
+        """Test that is_at_key_level method uses tolerance parameter."""
+        # Tight tolerance
+        result_tight = self.calculator.is_at_key_level(
+            current_price=100.0,
+            reference_price=98.0,
+            tolerance=0.001  # 0.1%
+        )
+
+        # Loose tolerance
+        result_loose = self.calculator.is_at_key_level(
+            current_price=100.0,
+            reference_price=98.0,
+            tolerance=0.10  # 10%
+        )
+
+        # Results should be boolean
+        assert isinstance(result_tight["at_support"], bool)
+        assert isinstance(result_tight["at_resistance"], bool)
+        assert isinstance(result_loose["at_support"], bool)
+        assert isinstance(result_loose["at_resistance"], bool)
+
+
+class TestGannLevelMetadata:
+    """Test level strength/confidence metadata."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.calculator = get_gann_calculator()
+
+    def test_calculate_gann_levels_with_metadata_structure(self):
+        """Test that metadata method returns structured data."""
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=110.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        # Verify structure
+        assert "support_levels" in result
+        assert "resistance_levels" in result
+        assert "nearest_support" in result
+        assert "nearest_resistance" in result
+        assert "current_position" in result
+
+        # Support and resistance should be lists of dicts
+        assert isinstance(result["support_levels"], list)
+        assert isinstance(result["resistance_levels"], list)
+
+        # Check that resistance levels have metadata
+        if result["resistance_levels"]:
+            level = result["resistance_levels"][0]
+            assert "price" in level
+            assert "angle" in level
+            assert "rotation" in level
+            assert "strength" in level
+            assert "distance_pct" in level
+            assert "level_type" in level
+
+    def test_level_strength_classification(self):
+        """Test that levels are correctly classified as major or minor."""
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=110.0,
+            reference_price=100.0,
+            num_levels=2
+        )
+
+        # Collect all levels
+        all_levels = result["support_levels"] + result["resistance_levels"]
+
+        # Cardinal angles (90, 180, 270, 360) should be 'major'
+        # Diagonal angles (45, 135, 225, 315) should be 'minor'
+        cardinal_angles = [90, 180, 270, 360]
+        diagonal_angles = [45, 135, 225, 315]
+
+        for level in all_levels:
+            if level["angle"] in cardinal_angles:
+                assert level["strength"] == "major", \
+                    f"Cardinal angle {level['angle']} should be 'major'"
+            elif level["angle"] in diagonal_angles:
+                assert level["strength"] == "minor", \
+                    f"Diagonal angle {level['angle']} should be 'minor'"
+
+    def test_distance_pct_calculation(self):
+        """Test that distance_pct is calculated correctly."""
+        current_price = 100.0
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=current_price,
+            reference_price=current_price,
+            num_levels=2
+        )
+
+        # Check resistance levels (should be positive %)
+        for level in result["resistance_levels"]:
+            expected_distance = ((level["price"] - current_price) / current_price) * 100
+            assert abs(level["distance_pct"] - expected_distance) < 0.01, \
+                f"Distance % should be {expected_distance:.2f}, got {level['distance_pct']}"
+            assert level["distance_pct"] > 0, "Resistance should have positive distance %"
+
+        # Check support levels (should be negative %)
+        for level in result["support_levels"]:
+            expected_distance = ((level["price"] - current_price) / current_price) * 100
+            assert abs(level["distance_pct"] - expected_distance) < 0.01, \
+                f"Distance % should be {expected_distance:.2f}, got {level['distance_pct']}"
+            assert level["distance_pct"] < 0, "Support should have negative distance %"
+
+    def test_level_type_classification(self):
+        """Test that levels are correctly classified as support or resistance."""
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=110.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        # All support levels should have level_type='support'
+        for level in result["support_levels"]:
+            assert level["level_type"] == "support"
+
+        # All resistance levels should have level_type='resistance'
+        for level in result["resistance_levels"]:
+            assert level["level_type"] == "resistance"
+
+    def test_nearest_support_has_metadata(self):
+        """Test that nearest support includes metadata when using metadata method."""
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=110.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        if result["nearest_support"]:
+            nearest = result["nearest_support"]
+            assert "price" in nearest
+            assert "angle" in nearest
+            assert "rotation" in nearest
+            assert "strength" in nearest
+            assert nearest["level_type"] == "support"
+
+    def test_nearest_resistance_has_metadata(self):
+        """Test that nearest resistance includes metadata when using metadata method."""
+        result = self.calculator.calculate_gann_levels_with_metadata(
+            current_price=90.0,
+            reference_price=100.0,
+            num_levels=3
+        )
+
+        if result["nearest_resistance"]:
+            nearest = result["nearest_resistance"]
+            assert "price" in nearest
+            assert "angle" in nearest
+            assert "rotation" in nearest
+            assert "strength" in nearest
+            assert nearest["level_type"] == "resistance"

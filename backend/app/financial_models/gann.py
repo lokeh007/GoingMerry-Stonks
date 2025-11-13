@@ -89,9 +89,112 @@ Gann Square of 9 functionality.
 
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class GannLevel:
+    """
+    Represents a single Gann Square of 9 support or resistance level.
+
+    Attributes:
+        price: The calculated price level
+        angle: The angle in degrees (45, 90, 135, 180, 225, 270, 315, 360)
+        rotation: The rotation number (1, 2, 3, ...)
+        strength: Level strength ('major' for cardinal angles, 'minor' for diagonal angles)
+        distance_pct: Distance from current price as percentage (positive = above, negative = below)
+        level_type: 'support' or 'resistance'
+    """
+    price: float
+    angle: int
+    rotation: int
+    strength: str
+    distance_pct: float
+    level_type: str
+
+
+@lru_cache(maxsize=1000)
+def _calculate_gann_levels_cached(
+    current_price: float,
+    reference_price: float,
+    num_levels: int,
+) -> Tuple[List[float], List[float]]:
+    """
+    Cached calculation of Gann support and resistance levels.
+
+    This function is cached to avoid redundant calculations when the same
+    parameters are used repeatedly. The cache can store up to 1000 different
+    parameter combinations.
+
+    Args:
+        current_price: Current stock price
+        reference_price: Reference price (52-week low or high)
+        num_levels: Number of levels to calculate in each direction
+
+    Returns:
+        Tuple of (support_levels, resistance_levels)
+
+    Note:
+        This is a module-level function (not a method) to enable LRU caching.
+        Instance methods cannot be effectively cached with lru_cache.
+    """
+    # Cardinal angles (strongest levels)
+    CARDINAL_ANGLES = [90, 180, 270, 360]
+
+    # Diagonal angles (secondary levels)
+    DIAGONAL_ANGLES = [45, 135, 225, 315]
+
+    # All key angles combined
+    KEY_ANGLES = CARDINAL_ANGLES + DIAGONAL_ANGLES
+
+    def calculate_price_at_angle(
+        center_price: float, angle: int, rotation: int, direction: str
+    ) -> float:
+        """Calculate price at specific angle and rotation."""
+        sqrt_center = math.sqrt(center_price)
+        angular_increment = (angle / 360.0) * rotation
+
+        if direction == "up":
+            price_sqrt = sqrt_center + angular_increment
+        else:
+            price_sqrt = sqrt_center - angular_increment
+
+        if price_sqrt <= 0:
+            return 0
+
+        return price_sqrt ** 2
+
+    # Calculate support levels (below reference price)
+    support_levels = []
+    for rotation in range(1, num_levels + 1):
+        for angle in KEY_ANGLES:
+            price = calculate_price_at_angle(reference_price, angle, rotation, "down")
+            if price > 0 and price < reference_price:
+                support_levels.append(round(price, 2))
+
+    # Calculate resistance levels (above reference price)
+    resistance_levels = []
+    for rotation in range(1, num_levels + 1):
+        for angle in KEY_ANGLES:
+            price = calculate_price_at_angle(reference_price, angle, rotation, "up")
+            if price > reference_price:
+                resistance_levels.append(round(price, 2))
+
+    # Remove duplicates and sort
+    support_levels = sorted(list(set(support_levels)))
+    resistance_levels = sorted(list(set(resistance_levels)))
+
+    logger.debug(
+        f"[CACHE MISS] Calculated {len(support_levels)} support and "
+        f"{len(resistance_levels)} resistance levels for "
+        f"current={current_price:.2f}, ref={reference_price:.2f}, num_levels={num_levels}"
+    )
+
+    return (support_levels, resistance_levels)
 
 
 class GannSquareCalculator:
@@ -129,11 +232,134 @@ class GannSquareCalculator:
     # Number of levels to calculate up and down
     DEFAULT_LEVELS = 5
 
+    def calculate_gann_levels_with_metadata(
+        self,
+        current_price: float,
+        reference_price: Optional[float] = None,
+        num_levels: int = DEFAULT_LEVELS,
+        tolerance: float = 0.02,
+    ) -> Dict[str, Any]:
+        """
+        Calculate Gann levels with detailed metadata for each level.
+
+        This method returns structured GannLevel objects with angle, rotation,
+        strength, and distance information for each calculated level.
+
+        Args:
+            current_price: Current stock price
+            reference_price: Reference price (52-week low or high). If None, uses current_price
+            num_levels: Number of levels to calculate in each direction
+            tolerance: Price tolerance as percentage for determining position
+
+        Returns:
+            Dict containing structured level data with metadata
+        """
+        # Validate inputs
+        if current_price <= 0:
+            raise ValueError(f"current_price must be > 0, got {current_price}")
+
+        if reference_price is not None and reference_price <= 0:
+            raise ValueError(f"reference_price must be > 0, got {reference_price}")
+
+        if not 1 <= num_levels <= 10:
+            raise ValueError(f"num_levels must be between 1 and 10, got {num_levels}")
+
+        if reference_price is None:
+            reference_price = current_price
+
+        # Calculate levels with detailed metadata
+        support_levels_detailed: List[GannLevel] = []
+        resistance_levels_detailed: List[GannLevel] = []
+
+        for rotation in range(1, num_levels + 1):
+            for angle in self.KEY_ANGLES:
+                # Calculate price for this angle and rotation
+                price_down = self._calculate_gann_price_at_angle(
+                    reference_price, angle, rotation, "down"
+                )
+                price_up = self._calculate_gann_price_at_angle(
+                    reference_price, angle, rotation, "up"
+                )
+
+                # Determine strength based on angle type
+                # Cardinal angles (90, 180, 270, 360) are major
+                # Diagonal angles (45, 135, 225, 315) are minor
+                strength = "major" if angle in self.CARDINAL_ANGLES else "minor"
+
+                # Add support level if valid
+                if price_down > 0 and price_down < reference_price:
+                    distance_pct = ((price_down - current_price) / current_price) * 100
+                    support_levels_detailed.append(GannLevel(
+                        price=round(price_down, 2),
+                        angle=angle,
+                        rotation=rotation,
+                        strength=strength,
+                        distance_pct=round(distance_pct, 2),
+                        level_type="support"
+                    ))
+
+                # Add resistance level if valid
+                if price_up > reference_price:
+                    distance_pct = ((price_up - current_price) / current_price) * 100
+                    resistance_levels_detailed.append(GannLevel(
+                        price=round(price_up, 2),
+                        angle=angle,
+                        rotation=rotation,
+                        strength=strength,
+                        distance_pct=round(distance_pct, 2),
+                        level_type="resistance"
+                    ))
+
+        # Remove duplicates based on price (keep first occurrence)
+        seen_support_prices = set()
+        unique_support = []
+        for level in support_levels_detailed:
+            if level.price not in seen_support_prices:
+                seen_support_prices.add(level.price)
+                unique_support.append(level)
+
+        seen_resistance_prices = set()
+        unique_resistance = []
+        for level in resistance_levels_detailed:
+            if level.price not in seen_resistance_prices:
+                seen_resistance_prices.add(level.price)
+                unique_resistance.append(level)
+
+        # Sort by price
+        support_levels_detailed = sorted(unique_support, key=lambda x: x.price)
+        resistance_levels_detailed = sorted(unique_resistance, key=lambda x: x.price)
+
+        # Find nearest levels
+        support_below = [s for s in support_levels_detailed if s.price < current_price]
+        nearest_support = max(support_below, key=lambda x: x.price) if support_below else None
+
+        resistance_above = [r for r in resistance_levels_detailed if r.price > current_price]
+        nearest_resistance = min(resistance_above, key=lambda x: x.price) if resistance_above else None
+
+        # Determine position
+        position = self._determine_position(
+            current_price,
+            nearest_support.price if nearest_support else None,
+            nearest_resistance.price if nearest_resistance else None,
+            tolerance=tolerance
+        )
+
+        return {
+            "current_price": current_price,
+            "reference_price": reference_price,
+            "support_levels": [level.__dict__ for level in support_levels_detailed],
+            "resistance_levels": [level.__dict__ for level in resistance_levels_detailed],
+            "nearest_support": nearest_support.__dict__ if nearest_support else None,
+            "nearest_resistance": nearest_resistance.__dict__ if nearest_resistance else None,
+            "current_position": position,
+        }
+
     def calculate_gann_levels(
         self,
         current_price: float,
         reference_price: Optional[float] = None,
         num_levels: int = DEFAULT_LEVELS,
+        tolerance: float = 0.02,
     ) -> Dict[str, Any]:
         """
         Calculate Gann Square of 9 support and resistance levels.
@@ -142,6 +368,7 @@ class GannSquareCalculator:
             current_price: Current stock price
             reference_price: Reference price (52-week low or high). If None, uses current_price
             num_levels: Number of levels to calculate in each direction
+            tolerance: Price tolerance as percentage for determining position (default: 0.02 = 2%)
 
         Returns:
             Dict containing:
@@ -178,14 +405,13 @@ class GannSquareCalculator:
                 f"reference={reference_price:.2f}"
             )
 
-            # Calculate support levels (below current price)
-            support_levels = self._calculate_levels(
-                reference_price, direction="down", num_levels=num_levels
-            )
-
-            # Calculate resistance levels (above current price)
-            resistance_levels = self._calculate_levels(
-                reference_price, direction="up", num_levels=num_levels
+            # Use cached calculation for performance
+            # Round current_price to nearest $0.10 to improve cache hit rate
+            current_price_rounded = round(current_price * 10) / 10
+            support_levels, resistance_levels = _calculate_gann_levels_cached(
+                current_price=current_price_rounded,
+                reference_price=reference_price,
+                num_levels=num_levels,
             )
 
             # Find nearest levels to current price
@@ -196,7 +422,7 @@ class GannSquareCalculator:
 
             # Determine current position
             position = self._determine_position(
-                current_price, nearest_support, nearest_resistance
+                current_price, nearest_support, nearest_resistance, tolerance=tolerance
             )
 
             result = {
@@ -396,6 +622,7 @@ class GannSquareCalculator:
         current_price: float,
         nearest_support: Optional[float],
         nearest_resistance: Optional[float],
+        tolerance: float = 0.02,
     ) -> str:
         """
         Determine current position relative to key levels.
@@ -404,11 +631,11 @@ class GannSquareCalculator:
             current_price: Current stock price
             nearest_support: Nearest support level
             nearest_resistance: Nearest resistance level
+            tolerance: Price tolerance as percentage (default: 0.02 = 2%)
 
         Returns:
-            Position description: 'at_support', 'at_resistance', 'between', 'unknown'
+            Position description: 'at_support', 'at_resistance', 'between_levels', 'unknown'
         """
-        tolerance = 0.02  # 2% tolerance
 
         if nearest_support:
             support_diff = abs(current_price - nearest_support) / current_price
