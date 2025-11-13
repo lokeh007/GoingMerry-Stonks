@@ -170,7 +170,7 @@ module "scheduled_jobs" {
   job_schedule = "30 23 * * 1-5"  # 23:30 UTC = 6:30 PM ET
 
   # Resource allocation for processing ~6000 stocks
-  job_timeout = 7200  # 2 hours
+  job_timeout = 10800  # 3 hours (increased for Quick Win - will reduce with parallel processing)
   job_memory  = "2Gi"
   job_cpu     = "2"
 
