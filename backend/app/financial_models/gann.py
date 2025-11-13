@@ -4,14 +4,92 @@ Gann Square of 9 Calculator Module.
 This module implements W.D. Gann's Square of 9 mathematical technique
 for identifying key support and resistance levels in stock prices.
 
-The Square of 9 is a spiral starting at 1 in the center, with numbers
-increasing outward. Key angles (90°, 180°, 270°, 360°) represent
-important price levels.
+## Overview
+
+The Square of 9 is a spiral-based price calculator where numbers increase
+outward from a center point. The spiral progresses through "rings," with
+each complete rotation (360°) representing a full cycle. Key angles within
+each rotation mark important price levels.
+
+## Mathematical Foundation
+
+The core formula is based on square roots and angular relationships:
+
+    sqrt(price) = sqrt(reference_price) ± (rotation × angle / 360)
+    price = sqrt(price)²
+
+Where:
+- reference_price: Starting point (typically 52-week low or significant price level)
+- rotation: Distance from center (1, 2, 3, ...)
+- angle: Position on the spiral (0° to 360°)
+
+### Example Calculation
+
+Starting at $100 (sqrt = 10):
+- 90° rotation 1:  sqrt = 10 + (1 × 90/360)  = 10.25  → $105.06
+- 180° rotation 1: sqrt = 10 + (1 × 180/360) = 10.5   → $110.25
+- 270° rotation 1: sqrt = 10 + (1 × 270/360) = 10.75  → $115.56
+- 360° rotation 1: sqrt = 10 + (1 × 360/360) = 11     → $121.00
+
+## Key Angles and Their Significance
+
+### Cardinal Angles (Primary Levels)
+- **0°/360°**: Full rotation, strongest resistance/support
+- **90°**: Quarter cycle, significant level
+- **180°**: Half cycle, most important level in Gann theory
+- **270°**: Three-quarter cycle, significant level
+
+### Diagonal Angles (Secondary Levels)
+- **45°**: Northeast diagonal, minor resistance/support
+- **135°**: Northwest diagonal, minor resistance/support
+- **225°**: Southwest diagonal, minor resistance/support
+- **315°**: Southeast diagonal, minor resistance/support
+
+In traditional Gann analysis, cardinal angles are considered stronger
+than diagonal angles.
+
+## Usage Example
+
+```python
+from app.financial_models.gann import get_gann_calculator
+
+calculator = get_gann_calculator()
+
+# Calculate levels for a stock at $150 with 52-week low at $100
+levels = calculator.calculate_gann_levels(
+    current_price=150.0,
+    reference_price=100.0,
+    num_levels=5
+)
+
+print(f"Support levels: {levels['support_levels']}")
+print(f"Resistance levels: {levels['resistance_levels']}")
+print(f"Nearest support: ${levels['nearest_support']:.2f}")
+print(f"Nearest resistance: ${levels['nearest_resistance']:.2f}")
+print(f"Position: {levels['current_position']}")
+```
+
+## Limitations
+
+This implementation focuses on **price levels only**. Traditional Gann
+analysis also includes:
+- Time cycles (days/weeks from significant dates)
+- Speed angles (1×1, 2×1, etc.)
+- Natural squares of time (30, 90, 120, 144 days)
+
+Future enhancements may add time-based calculations for complete
+Gann Square of 9 functionality.
+
+## References
+
+- Gann, W.D. "The Basis of My Forecasting Method" (1935)
+- Trading literature on Gann Square of 9 methodology
+- Various technical analysis references on Gann theory
 """
 
 import logging
 import math
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +99,32 @@ class GannSquareCalculator:
     Calculator for Gann Square of 9 support and resistance levels.
 
     The Square of 9 uses a mathematical spiral to calculate price targets
-    based on angular relationships. Key angles:
-    - 90° (0.25 rotation): Minor support/resistance
-    - 180° (0.5 rotation): Major support/resistance
-    - 270° (0.75 rotation): Minor support/resistance
-    - 360° (1.0 rotation): Complete cycle, strongest levels
+    based on angular relationships.
+
+    Cardinal Angles (Primary levels):
+    - 90° (0.25 rotation): Quarter-cycle support/resistance
+    - 180° (0.5 rotation): Half-cycle, strongest support/resistance
+    - 270° (0.75 rotation): Three-quarter cycle support/resistance
+    - 360° (1.0 rotation): Complete cycle, major support/resistance
+
+    Diagonal Angles (Secondary levels):
+    - 45° (0.125 rotation): Minor support/resistance
+    - 135° (0.375 rotation): Minor support/resistance
+    - 225° (0.625 rotation): Minor support/resistance
+    - 315° (0.875 rotation): Minor support/resistance
+
+    In Gann theory, cardinal angles (0°, 90°, 180°, 270°) are considered
+    stronger than diagonal angles (45°, 135°, 225°, 315°).
     """
 
-    # Key angles in degrees
-    KEY_ANGLES = [90, 180, 270, 360]
+    # Cardinal angles (strongest levels)
+    CARDINAL_ANGLES = [90, 180, 270, 360]
+
+    # Diagonal angles (secondary levels)
+    DIAGONAL_ANGLES = [45, 135, 225, 315]
+
+    # All key angles combined
+    KEY_ANGLES = CARDINAL_ANGLES + DIAGONAL_ANGLES
 
     # Number of levels to calculate up and down
     DEFAULT_LEVELS = 5
@@ -39,7 +134,7 @@ class GannSquareCalculator:
         current_price: float,
         reference_price: Optional[float] = None,
         num_levels: int = DEFAULT_LEVELS,
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Calculate Gann Square of 9 support and resistance levels.
 
@@ -57,8 +152,26 @@ class GannSquareCalculator:
             - nearest_resistance: Closest resistance level above current price
         """
         try:
+            # Validate inputs
+            if current_price <= 0:
+                raise ValueError(f"current_price must be > 0, got {current_price}")
+
+            if reference_price is not None and reference_price <= 0:
+                raise ValueError(f"reference_price must be > 0, got {reference_price}")
+
+            if not 1 <= num_levels <= 10:
+                raise ValueError(f"num_levels must be between 1 and 10, got {num_levels}")
+
             if reference_price is None:
                 reference_price = current_price
+
+            # Warn if prices are very different
+            if abs(current_price - reference_price) / current_price > 0.5:
+                logger.warning(
+                    f"Large price gap: current=${current_price:.2f}, "
+                    f"reference=${reference_price:.2f} "
+                    f"({abs(1 - reference_price/current_price)*100:.0f}% difference)"
+                )
 
             logger.info(
                 f"Calculating Gann levels: current={current_price:.2f}, "
@@ -142,52 +255,108 @@ class GannSquareCalculator:
             logger.error(f"Error checking key levels: {e}")
             return {"at_support": False, "at_resistance": False}
 
+    def _calculate_gann_price_at_angle(
+        self, center_price: float, angle: int, rotation: int, direction: str = "up"
+    ) -> float:
+        """
+        Calculate price at specific angle and rotation on Gann Square of 9 spiral.
+
+        The Gann Square of 9 is a price spiral where each full rotation (360°)
+        adds approximately 2 to the square root of the price. Key angles
+        represent important support/resistance levels.
+
+        Formula:
+            sqrt(price) = sqrt(center_price) ± (rotation × angle / 360)
+            price = sqrt(price)²
+
+        Args:
+            center_price: Reference/center price for the calculation
+            angle: Angle in degrees (90, 180, 270, 360)
+            rotation: Rotation number (1, 2, 3, ...) representing distance from center
+            direction: 'up' for resistance, 'down' for support
+
+        Returns:
+            Calculated price at the specified angle and rotation
+
+        Example:
+            Starting at $100 (sqrt=10):
+            - 180° rotation 1 up: sqrt=10+(1×180/360)=10.5, price=110.25
+            - 360° rotation 1 up: sqrt=10+(1×360/360)=11, price=121
+            - Full rotation (360°) always adds 1 to sqrt, or ~21% to price
+        """
+        sqrt_center = math.sqrt(center_price)
+
+        # Calculate the angular distance in the spiral
+        # Each rotation at a given angle represents a step along that angle
+        angular_increment = (angle / 360.0) * rotation
+
+        if direction == "up":
+            price_sqrt = sqrt_center + angular_increment
+        else:
+            price_sqrt = sqrt_center - angular_increment
+
+        # Ensure non-negative sqrt value
+        if price_sqrt <= 0:
+            return 0
+
+        return price_sqrt ** 2
+
     def _calculate_levels(
         self, reference_price: float, direction: str, num_levels: int
     ) -> List[float]:
         """
-        Calculate support or resistance levels using Square of 9 formula.
+        Calculate support or resistance levels using Gann Square of 9 spiral formula.
 
-        Formula: value = (sqrt(reference) + angle/360) ^ 2
+        The Square of 9 uses a mathematical spiral where numbers increase outward
+        from the center. Key angles (90°, 180°, 270°, 360°) represent important
+        price levels based on Gann's geometric relationships.
 
         Args:
-            reference_price: Starting price
+            reference_price: Starting price (typically 52-week low/high)
             direction: 'up' for resistance, 'down' for support
-            num_levels: Number of levels to calculate
+            num_levels: Number of rotation levels to calculate
 
         Returns:
-            List of price levels
+            List of calculated price levels, filtered by direction
         """
         levels = []
         sqrt_ref = math.sqrt(reference_price)
 
-        for i in range(1, num_levels + 1):
+        logger.debug(
+            f"Calculating {num_levels} levels in '{direction}' direction from ${reference_price:.2f}"
+        )
+
+        for rotation in range(1, num_levels + 1):
             for angle in self.KEY_ANGLES:
-                # Calculate angular distance
-                rotations = angle / 360.0
+                # Calculate price at this angle and rotation
+                price = self._calculate_gann_price_at_angle(
+                    center_price=reference_price,
+                    angle=angle,
+                    rotation=rotation,
+                    direction=direction
+                )
 
-                if direction == "up":
-                    # Add rotations for resistance
-                    sqrt_value = sqrt_ref + (rotations * i)
-                else:
-                    # Subtract rotations for support
-                    sqrt_value = sqrt_ref - (rotations * i)
-
-                # Ensure we don't get negative sqrt values
-                if sqrt_value > 0:
-                    level = sqrt_value**2
-                    levels.append(round(level, 2))
+                if price > 0:
+                    levels.append(round(price, 2))
+                    logger.debug(
+                        f"  Rotation {rotation}, Angle {angle:3d}°: ${price:8.2f} "
+                        f"(sqrt={math.sqrt(price):.4f})"
+                    )
 
         # Remove duplicates and sort
+        raw_count = len(levels)
         levels = sorted(list(set(levels)))
+        logger.debug(f"Generated {raw_count} levels, {len(levels)} unique after deduplication")
 
+        # Filter levels based on direction
         if direction == "up":
-            # For resistance, filter levels above reference
+            # For resistance, keep only levels above reference
             levels = [l for l in levels if l > reference_price]
         else:
-            # For support, filter levels below reference
+            # For support, keep only levels below reference
             levels = [l for l in levels if l < reference_price]
 
+        logger.debug(f"Filtered to {len(levels)} levels {direction} from reference price")
         return levels
 
     def _find_nearest_support(
@@ -295,6 +464,295 @@ class GannSquareCalculator:
         )
 
         return round(target, 2)
+
+    # ============================================================
+    # Time Dimension Methods (Gann Price-Time Calculator)
+    # ============================================================
+
+    def calculate_time_cycles(
+        self, entry_date: str, cycle_type: str = "natural"
+    ) -> Dict[str, Any]:
+        """
+        Calculate Gann time cycles from a significant date.
+
+        Gann's time cycles are based on natural squares and astronomical cycles.
+        Key time periods: 30, 60, 90, 120, 144, 180, 360 days.
+
+        Args:
+            entry_date: Starting date in YYYY-MM-DD format
+            cycle_type: Type of cycle ('natural', 'cardinal', 'all')
+
+        Returns:
+            Dict containing cycle dates and their significance
+
+        Example:
+            >>> calc.calculate_time_cycles("2024-01-01", "natural")
+            {
+                "entry_date": "2024-01-01",
+                "cycles": [
+                    {"days": 30, "date": "2024-01-31", "significance": "minor"},
+                    {"days": 90, "date": "2024-04-01", "significance": "major"},
+                    ...
+                ]
+            }
+        """
+        from datetime import datetime, timedelta
+
+        try:
+            start_date = datetime.strptime(entry_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid date format: {entry_date}. Use YYYY-MM-DD")
+
+        # Gann's natural time cycles
+        natural_cycles = [30, 60, 90, 120, 144, 180, 240, 270, 360]
+
+        # Cardinal cycles (quarters)
+        cardinal_cycles = [90, 180, 270, 360]
+
+        # Diagonal cycles (45° increments)
+        diagonal_cycles = [45, 135, 225, 315]
+
+        if cycle_type == "natural":
+            cycles_to_use = natural_cycles
+        elif cycle_type == "cardinal":
+            cycles_to_use = cardinal_cycles
+        elif cycle_type == "diagonal":
+            cycles_to_use = diagonal_cycles
+        else:  # "all"
+            cycles_to_use = sorted(set(natural_cycles + diagonal_cycles))
+
+        cycle_dates = []
+        for days in cycles_to_use:
+            target_date = start_date + timedelta(days=days)
+
+            # Determine significance based on cycle length
+            if days in [90, 180, 360]:
+                significance = "major"
+            elif days in [30, 60, 120, 270]:
+                significance = "moderate"
+            else:
+                significance = "minor"
+
+            cycle_dates.append({
+                "days": days,
+                "date": target_date.strftime("%Y-%m-%d"),
+                "significance": significance,
+                "description": self._get_cycle_description(days)
+            })
+
+        logger.info(
+            f"Calculated {len(cycle_dates)} time cycles from {entry_date}"
+        )
+
+        return {
+            "entry_date": entry_date,
+            "cycle_type": cycle_type,
+            "cycles": cycle_dates
+        }
+
+    def calculate_time_to_price_target(
+        self,
+        entry_price: float,
+        target_price: float,
+        entry_date: str,
+        speed_angle: str = "1x1"
+    ) -> Dict[str, Any]:
+        """
+        Calculate estimated time to reach a price target using Gann angles.
+
+        Gann speed angles represent the relationship between price and time:
+        - 1x1: 1 point of price per 1 unit of time (45° angle, balanced)
+        - 2x1: 2 points of price per 1 unit of time (steeper, faster move)
+        - 1x2: 1 point of price per 2 units of time (gentler, slower move)
+
+        Args:
+            entry_price: Starting price
+            target_price: Target price to reach
+            entry_date: Entry date in YYYY-MM-DD format
+            speed_angle: Gann speed angle ('1x1', '2x1', '1x2')
+
+        Returns:
+            Dict containing estimated target date and time period
+
+        Note:
+            This is a simplified implementation. True Gann analysis requires
+            detailed price-time square charting and manual analysis.
+        """
+        from datetime import datetime, timedelta
+
+        if entry_price <= 0 or target_price <= 0:
+            raise ValueError("Prices must be positive")
+
+        try:
+            start_date = datetime.strptime(entry_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid date format: {entry_date}. Use YYYY-MM-DD")
+
+        # Calculate price distance in square root space
+        sqrt_entry = math.sqrt(entry_price)
+        sqrt_target = math.sqrt(target_price)
+        sqrt_distance = abs(sqrt_target - sqrt_entry)
+
+        # Speed angle determines time per unit of sqrt distance
+        # 1x1 = balanced (1 day per 0.01 sqrt unit as baseline)
+        # 2x1 = faster (0.5 days per 0.01 sqrt unit)
+        # 1x2 = slower (2 days per 0.01 sqrt unit)
+        speed_multipliers = {
+            "1x1": 1.0,
+            "2x1": 0.5,
+            "1x2": 2.0,
+            "1x3": 3.0,
+            "3x1": 0.33
+        }
+
+        if speed_angle not in speed_multipliers:
+            raise ValueError(f"Invalid speed angle. Use one of {list(speed_multipliers.keys())}")
+
+        # Baseline: 100 days per full unit of sqrt distance (approximation)
+        baseline_days_per_unit = 100
+        speed_factor = speed_multipliers[speed_angle]
+
+        estimated_days = int(sqrt_distance * baseline_days_per_unit * speed_factor)
+        target_date = start_date + timedelta(days=estimated_days)
+
+        direction = "up" if target_price > entry_price else "down"
+        price_change_pct = ((target_price / entry_price) - 1) * 100
+
+        logger.info(
+            f"Time to target: {entry_price:.2f} → {target_price:.2f} "
+            f"at {speed_angle} angle: {estimated_days} days"
+        )
+
+        return {
+            "entry_price": entry_price,
+            "target_price": target_price,
+            "entry_date": entry_date,
+            "target_date": target_date.strftime("%Y-%m-%d"),
+            "estimated_days": estimated_days,
+            "speed_angle": speed_angle,
+            "direction": direction,
+            "price_change_pct": round(price_change_pct, 2),
+            "sqrt_distance": round(sqrt_distance, 4),
+            "note": "This is an approximation. Actual market movements vary significantly."
+        }
+
+    def calculate_price_at_time(
+        self,
+        entry_price: float,
+        entry_date: str,
+        target_date: str,
+        speed_angle: str = "1x1",
+        direction: str = "up"
+    ) -> Dict[str, Any]:
+        """
+        Calculate expected price at a future date using Gann speed angles.
+
+        Args:
+            entry_price: Starting price
+            entry_date: Entry date in YYYY-MM-DD format
+            target_date: Target date in YYYY-MM-DD format
+            speed_angle: Gann speed angle ('1x1', '2x1', '1x2', etc.)
+            direction: 'up' for bullish, 'down' for bearish
+
+        Returns:
+            Dict containing estimated price at target date
+
+        Note:
+            This is a theoretical calculation based on Gann principles.
+            Real market prices depend on many factors beyond time-price geometry.
+        """
+        from datetime import datetime
+
+        if entry_price <= 0:
+            raise ValueError("entry_price must be positive")
+
+        try:
+            start_date = datetime.strptime(entry_date, "%Y-%m-%d")
+            end_date = datetime.strptime(target_date, "%Y-%m-%d")
+        except ValueError as e:
+            raise ValueError(f"Invalid date format. Use YYYY-MM-DD: {e}")
+
+        # Calculate time difference
+        days_diff = (end_date - start_date).days
+
+        if days_diff < 0:
+            raise ValueError("target_date must be after entry_date")
+
+        # Speed angle determines price movement rate
+        speed_multipliers = {
+            "1x1": 1.0,
+            "2x1": 2.0,
+            "1x2": 0.5,
+            "1x3": 0.33,
+            "3x1": 3.0
+        }
+
+        if speed_angle not in speed_multipliers:
+            raise ValueError(f"Invalid speed angle. Use one of {list(speed_multipliers.keys())}")
+
+        # Baseline: 0.01 sqrt unit per 100 days (approximation)
+        baseline_sqrt_change_per_100_days = 0.01
+        speed_factor = speed_multipliers[speed_angle]
+
+        sqrt_entry = math.sqrt(entry_price)
+        sqrt_change = (days_diff / 100) * baseline_sqrt_change_per_100_days * speed_factor
+
+        if direction == "up":
+            sqrt_target = sqrt_entry + sqrt_change
+        else:
+            sqrt_target = sqrt_entry - sqrt_change
+
+        if sqrt_target <= 0:
+            raise ValueError("Calculated price would be negative or zero")
+
+        target_price = sqrt_target ** 2
+        price_change_pct = ((target_price / entry_price) - 1) * 100
+
+        logger.info(
+            f"Price at time: {entry_price:.2f} on {entry_date} → "
+            f"{target_price:.2f} on {target_date} at {speed_angle} {direction}"
+        )
+
+        return {
+            "entry_price": entry_price,
+            "entry_date": entry_date,
+            "target_date": target_date,
+            "target_price": round(target_price, 2),
+            "days_elapsed": days_diff,
+            "speed_angle": speed_angle,
+            "direction": direction,
+            "price_change_pct": round(price_change_pct, 2),
+            "sqrt_change": round(sqrt_change, 4),
+            "note": "This is a theoretical calculation for educational purposes."
+        }
+
+    def _get_cycle_description(self, days: int) -> str:
+        """
+        Get description of a Gann time cycle.
+
+        Args:
+            days: Number of days in the cycle
+
+        Returns:
+            Description of the cycle's significance
+        """
+        descriptions = {
+            30: "1-month cycle (minor turning point)",
+            45: "45-day diagonal cycle",
+            60: "2-month cycle",
+            90: "Quarter cycle (major turning point)",
+            120: "4-month cycle",
+            135: "135-day diagonal cycle",
+            144: "144-day natural square cycle (12²)",
+            180: "Half-year cycle (major turning point)",
+            225: "225-day diagonal cycle",
+            240: "8-month cycle",
+            270: "Three-quarter year cycle",
+            315: "315-day diagonal cycle",
+            360: "Annual cycle (major turning point)"
+        }
+
+        return descriptions.get(days, f"{days}-day cycle")
 
 
 # Singleton instance
