@@ -267,7 +267,6 @@ class TickerUniverseProvider:
 
         for ticker in tickers:
             ticker = ticker.strip().upper()
-            skip_reason = None
 
             # Skip empty
             if not ticker:
@@ -275,39 +274,33 @@ class TickerUniverseProvider:
 
             # Skip indexes
             if ticker.startswith("^"):
-                skip_reason = "index"
                 filtered_by_reason["index"] += 1
                 continue
 
             # Skip very long tickers (warrants/units)
             if len(ticker) > 5:
-                skip_reason = "too_long"
                 filtered_by_reason["too_long"] += 1
                 continue
 
             # Skip preferred stocks and special securities (contain special chars)
             # $ is used for preferred stocks (BAC$E), - for hyphenated names, etc.
             if any(char in ticker for char in ["$", "-", ".", "/", "~", " "]):
-                skip_reason = "special_chars"
                 filtered_by_reason["special_chars"] += 1
                 continue
 
             # Skip tickers with numbers (usually warrants)
             if any(char.isdigit() for char in ticker):
-                skip_reason = "has_numbers"
                 filtered_by_reason["has_numbers"] += 1
                 continue
 
             # Skip known ETFs (whitelist approach - most reliable)
             if ticker in known_etfs:
-                skip_reason = "known_etf"
                 filtered_by_reason["known_etf"] += 1
                 etf_count += 1
                 continue
 
             # Skip test symbols
             if ticker in ["TEST", "SAMPLE", "ZVZZT"]:
-                skip_reason = "test_symbol"
                 filtered_by_reason["test_symbol"] += 1
                 continue
 
@@ -349,11 +342,11 @@ class TickerUniverseProvider:
             "VGT", "VHT", "VDC", "VCR", "VIS", "VDE", "VAW", "VFH", "VPU", "VOX",
 
             # ===== iShares Core ETFs =====
-            "IVV", "IEMG", "IEFA", "IJH", "IJR", "IWF", "IWD", "IWM", "IWN", "IWO",
+            "IVV", "IWF", "IWD", "IWN", "IWO",
             "IWP", "IWR", "IWS", "IWV",
 
             # ===== Commodity/Currency ETFs =====
-            "GLD", "SLV", "USO", "UNG", "DBA", "DBC", "UUP", "FXE", "FXY", "FXB",
+            "USO", "UNG", "DBA", "DBC", "UUP", "FXE", "FXY", "FXB",
             "DBO", "DBB", "PPLT", "PALL", "GLTR", "GSG", "DJP", "USCI", "PDBC",
 
             # ===== Volatility ETFs =====
@@ -363,11 +356,11 @@ class TickerUniverseProvider:
             # Technology
             "SOXL", "SOXS", "TECL", "TECS", "WEBL", "WEBS",
             # Financials
-            "FAS", "FAZ", "DPST", "DPST",
+            "FAS", "FAZ", "DPST",
             # Energy
             "ERX", "ERY", "GUSH", "DRIP", "NRGU", "NRGD",
             # Small/Mid Cap
-            "TNA", "TZA", "MIDU", "MIDZ", "SOXL", "SOXS",
+            "TNA", "TZA", "MIDU", "MIDZ",
             # Real Estate
             "DRN", "DRV",
             # Utilities
@@ -394,17 +387,13 @@ class TickerUniverseProvider:
             # NASDAQ
             "QLD", "QID", "TQQQ", "SQQQ",
             # Dow
-            "DDM", "DXD", "UDOW", "SDOW",
+            "UDOW", "SDOW",
             # Russell 2000
-            "UWM", "TWM", "URTY", "SRTY",
+            "URTY", "SRTY",
             # Semiconductors
             "USD", "SSG",
-            # Financials
-            "UYG", "SKF",
-            # Real Estate
-            "URE", "SRS",
             # Oil/Gas
-            "UCO", "SCO", "UNG", "KOLD",
+            "UCO", "SCO", "KOLD",
             # Gold/Silver
             "UGL", "GLL", "AGQ", "ZSL",
             # Utilities
@@ -418,15 +407,13 @@ class TickerUniverseProvider:
             # China
             "YINN", "YANG",
             # VIX
-            "UVXY", "SVXY",
 
             # ===== Leveraged Bond ETFs =====
             "TMF", "TMV", "TYD", "TYO", "UST", "PST",
 
             # ===== Inverse (Bear) ETFs =====
             "SH", "PSQ", "DOG", "RWM", "MYY", "EUM", "EFZ", "EFU",
-            "SEF", "SBB", "SBM", "SCC", "SDD", "SDP", "SIJ", "SJB",
-            "SKK", "SMN", "SRS", "SZK",
+            "SEF", "SBB", "SBM", "SIJ", "SJB", "SKK",
 
             # ===== ARK Innovation ETFs =====
             "ARKK", "ARKQ", "ARKW", "ARKG", "ARKF", "ARKX", "IZRL", "PRNT",
@@ -443,7 +430,6 @@ class TickerUniverseProvider:
             "UFO", "ROKT",  # Space
             "MSOS", "YOLO", "THCX", "MJ",  # Cannabis
             "BETZ", "BJK",  # Sports betting
-            "TAN", "ACES",  # Solar
             "JETS", "AWAY",  # Airlines/travel
             "XHE", "XBI",  # Biotech
             "SRVR", "DTEC",  # Data centers
