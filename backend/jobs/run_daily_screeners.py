@@ -35,6 +35,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Suppress yfinance ERROR logging for 404s (reduces log noise)
+yf_logger = logging.getLogger('yfinance')
+yf_logger.setLevel(logging.CRITICAL)  # Only show CRITICAL errors
+
 
 class DailyScreenerJob:
     """Orchestrates daily screener execution and Firestore storage."""
@@ -152,6 +156,7 @@ class DailyScreenerJob:
         start_time = datetime.now()
         results = []
         failed_tickers = []
+        not_found_tickers = []  # Track 404s separately
 
         # Screening parameters (conservative for full universe)
         max_institutional_ownership = 25.0  # < 25%
@@ -163,7 +168,15 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                logger.info(f"Progress: {i}/{len(universe)} stocks processed")
+                elapsed = (datetime.now() - start_time).total_seconds()
+                rate = i / elapsed if elapsed > 0 else 0
+                remaining = len(universe) - i
+                eta_seconds = remaining / rate if rate > 0 else 0
+                logger.info(
+                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
+                    f"Rate: {rate:.2f} tickers/sec | "
+                    f"ETA: {eta_seconds/60:.1f} min"
+                )
 
             try:
                 # Get fundamentals
@@ -208,8 +221,15 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                logger.debug(f"Failed to screen {ticker}: {e}")
-                failed_tickers.append(ticker)
+                # Categorize errors: 404s vs real failures
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
+                    # Expected - ticker doesn't exist or no data available
+                    not_found_tickers.append(ticker)
+                else:
+                    # Unexpected error - log for debugging
+                    logger.warning(f"Unexpected error screening {ticker}: {e}")
+                    failed_tickers.append(ticker)
                 continue
 
         # Sort by score (descending)
@@ -218,7 +238,8 @@ class DailyScreenerJob:
         execution_time = (datetime.now() - start_time).total_seconds()
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
-        logger.info(f"✗ Failed/skipped: {len(failed_tickers)} stocks")
+        logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
+        logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
@@ -227,6 +248,7 @@ class DailyScreenerJob:
             "total_results": len(results),
             "total_screened": len(universe),
             "failed_count": len(failed_tickers),
+            "not_found_count": len(not_found_tickers),
             "execution_time_seconds": round(execution_time, 2),
             "parameters": {
                 "max_institutional_ownership": max_institutional_ownership,
@@ -253,6 +275,7 @@ class DailyScreenerJob:
         start_time = datetime.now()
         results = []
         failed_tickers = []
+        not_found_tickers = []  # Track 404s separately
 
         # Screening parameters
         max_volatility_30d = 20.0  # < 20% HV (relaxed from 15%)
@@ -264,7 +287,15 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                logger.info(f"Progress: {i}/{len(universe)} stocks processed")
+                elapsed = (datetime.now() - start_time).total_seconds()
+                rate = i / elapsed if elapsed > 0 else 0
+                remaining = len(universe) - i
+                eta_seconds = remaining / rate if rate > 0 else 0
+                logger.info(
+                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
+                    f"Rate: {rate:.2f} tickers/sec | "
+                    f"ETA: {eta_seconds/60:.1f} min"
+                )
 
             try:
                 # Get fundamentals and volatility metrics
@@ -304,8 +335,15 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                logger.debug(f"Failed to screen {ticker}: {e}")
-                failed_tickers.append(ticker)
+                # Categorize errors: 404s vs real failures
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
+                    # Expected - ticker doesn't exist or no data available
+                    not_found_tickers.append(ticker)
+                else:
+                    # Unexpected error - log for debugging
+                    logger.warning(f"Unexpected error screening {ticker}: {e}")
+                    failed_tickers.append(ticker)
                 continue
 
         # Sort by consolidation score (descending)
@@ -314,7 +352,8 @@ class DailyScreenerJob:
         execution_time = (datetime.now() - start_time).total_seconds()
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
-        logger.info(f"✗ Failed/skipped: {len(failed_tickers)} stocks")
+        logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
+        logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
@@ -323,6 +362,7 @@ class DailyScreenerJob:
             "total_results": len(results),
             "total_screened": len(universe),
             "failed_count": len(failed_tickers),
+            "not_found_count": len(not_found_tickers),
             "execution_time_seconds": round(execution_time, 2),
             "parameters": {
                 "max_volatility_30d": max_volatility_30d,
@@ -446,6 +486,7 @@ class DailyScreenerJob:
         start_time = datetime.now()
         results = []
         failed_tickers = []
+        not_found_tickers = []  # Track 404s separately
 
         # Screening parameters
         min_call_to_put_ratio = 3.0  # >= 3.0x call volume vs put
@@ -456,7 +497,15 @@ class DailyScreenerJob:
 
         for i, ticker in enumerate(universe, 1):
             if i % 50 == 0:
-                logger.info(f"Progress: {i}/{len(universe)} stocks processed")
+                elapsed = (datetime.now() - start_time).total_seconds()
+                rate = i / elapsed if elapsed > 0 else 0
+                remaining = len(universe) - i
+                eta_seconds = remaining / rate if rate > 0 else 0
+                logger.info(
+                    f"Progress: {i}/{len(universe)} ({i/len(universe)*100:.1f}%) | "
+                    f"Rate: {rate:.2f} tickers/sec | "
+                    f"ETA: {eta_seconds/60:.1f} min"
+                )
 
             try:
                 # Get options flow metrics
@@ -504,8 +553,15 @@ class DailyScreenerJob:
                 results.append(result)
 
             except Exception as e:
-                logger.debug(f"Failed to screen {ticker}: {e}")
-                failed_tickers.append(ticker)
+                # Categorize errors: 404s vs real failures
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ["404", "not found", "no data", "no fundamentals"]):
+                    # Expected - ticker doesn't exist or no data available
+                    not_found_tickers.append(ticker)
+                else:
+                    # Unexpected error - log for debugging
+                    logger.warning(f"Unexpected error screening {ticker}: {e}")
+                    failed_tickers.append(ticker)
                 continue
 
         # Sort by score (descending)
@@ -514,7 +570,8 @@ class DailyScreenerJob:
         execution_time = (datetime.now() - start_time).total_seconds()
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
-        logger.info(f"✗ Failed/skipped: {len(failed_tickers)} stocks")
+        logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
+        logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
 
         return {
@@ -523,6 +580,7 @@ class DailyScreenerJob:
             "total_results": len(results),
             "total_screened": len(universe),
             "failed_count": len(failed_tickers),
+            "not_found_count": len(not_found_tickers),
             "execution_time_seconds": round(execution_time, 2),
             "parameters": {
                 "min_call_to_put_ratio": min_call_to_put_ratio,
