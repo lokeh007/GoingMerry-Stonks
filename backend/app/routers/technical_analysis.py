@@ -339,6 +339,10 @@ async def get_gann_levels(
         ge=1,
         le=10,
     ),
+    allow_extreme_reference_price: bool = Query(
+        False,
+        description="Allow reference price >2x current price (default: false)",
+    ),
 ):
     """
     Calculate Gann Square of 9 support and resistance levels.
@@ -356,6 +360,8 @@ async def get_gann_levels(
     - **ticker**: Stock ticker symbol
     - **reference_price**: Starting price for calculations (default: 52-week low)
     - **num_levels**: Number of levels to calculate (default: 5)
+    - **allow_extreme_reference_price**: Allow reference price >2x current price
+      (default: false). Used for analyzing historical levels after major price drops.
 
     **Returns:**
     - Current price and reference price
@@ -369,6 +375,7 @@ async def get_gann_levels(
     GET /technical/AAPL/gann
     GET /technical/NVDA/gann?num_levels=10
     GET /technical/TSLA/gann?reference_price=150.00
+    GET /technical/GME/gann?reference_price=400.00&allow_extreme_reference_price=true
     ```
 
     **Example Response:**
@@ -416,8 +423,19 @@ async def get_gann_levels(
                     detail="Reference price must be positive"
                 )
             if reference_price > current_price * 2:
+                if not allow_extreme_reference_price:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Reference price ${reference_price:.2f} is more than 2x "
+                            f"current price ${current_price:.2f}. This may indicate a data error "
+                            f"or unusual market condition. If this is intentional, set "
+                            f"allow_extreme_reference_price=true"
+                        )
+                    )
                 logger.warning(
-                    f"Reference price ${reference_price:.2f} is >2x current price ${current_price:.2f}"
+                    f"Using extreme reference price ${reference_price:.2f} "
+                    f"(>2x current price ${current_price:.2f})"
                 )
             ref_price = reference_price
         elif week_52_low:
