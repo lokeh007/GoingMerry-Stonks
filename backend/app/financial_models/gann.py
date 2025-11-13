@@ -89,6 +89,7 @@ Gann Square of 9 functionality.
 
 import logging
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
@@ -250,12 +251,10 @@ class GannSquareCalculator:
 
     In Gann theory, cardinal angles (0°, 90°, 180°, 270°) are considered
     stronger than diagonal angles (45°, 135°, 225°, 315°).
-    """
 
-    # Use module-level constants (defined at top of file)
-    CARDINAL_ANGLES = CARDINAL_ANGLES
-    DIAGONAL_ANGLES = DIAGONAL_ANGLES
-    KEY_ANGLES = KEY_ANGLES
+    Note: This class uses the module-level constants CARDINAL_ANGLES,
+    DIAGONAL_ANGLES, and KEY_ANGLES defined at the top of this file.
+    """
 
     # Number of levels to calculate up and down
     DEFAULT_LEVELS = 5
@@ -303,7 +302,7 @@ class GannSquareCalculator:
         resistance_levels_detailed: List[GannLevel] = []
 
         for rotation in range(1, num_levels + 1):
-            for angle in self.KEY_ANGLES:
+            for angle in KEY_ANGLES:
                 # Calculate price for this angle and rotation
                 price_down = self._calculate_gann_price_at_angle(
                     reference_price, angle, rotation, "down"
@@ -315,7 +314,7 @@ class GannSquareCalculator:
                 # Determine strength based on angle type
                 # Cardinal angles (90, 180, 270, 360) are major
                 # Diagonal angles (45, 135, 225, 315) are minor
-                strength = "major" if angle in self.CARDINAL_ANGLES else "minor"
+                strength = "major" if angle in CARDINAL_ANGLES else "minor"
 
                 # Add support level if valid
                 if price_down > 0 and price_down < reference_price:
@@ -353,8 +352,6 @@ class GannSquareCalculator:
 
             This ensures we keep the most meaningful level when duplicates exist.
             """
-            from collections import defaultdict
-
             price_to_levels: Dict[float, List[GannLevel]] = defaultdict(list)
             for level in levels:
                 price_to_levels[level.price].append(level)
@@ -591,7 +588,7 @@ class GannSquareCalculator:
         )
 
         for rotation in range(1, num_levels + 1):
-            for angle in self.KEY_ANGLES:
+            for angle in KEY_ANGLES:
                 # Calculate price at this angle and rotation
                 price = self._calculate_gann_price_at_angle(
                     center_price=reference_price,
@@ -707,8 +704,8 @@ class GannSquareCalculator:
         Raises:
             ValueError: If angle is not a key angle
         """
-        if angle not in self.KEY_ANGLES:
-            raise ValueError(f"Angle must be one of {self.KEY_ANGLES}")
+        if angle not in KEY_ANGLES:
+            raise ValueError(f"Angle must be one of {KEY_ANGLES}")
 
         sqrt_price = math.sqrt(entry_price)
         rotation = angle / 360.0
