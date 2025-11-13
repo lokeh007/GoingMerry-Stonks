@@ -1,0 +1,105 @@
+# Batch 4 & Batch 5 Error Summary
+# Generated: November 13, 2025
+
+## CRITICAL ISSUE: Jobs Failed Due to Outdated Docker Image
+
+Both batch-4 and batch-5 ran on schedule but FAILED immediately due to validation errors.
+
+---
+
+## Batch-4 Execution Log
+
+**Scheduler**: prod-trigger-daily-screeners-batch-4
+- Schedule: `0 2 * * 2-6` = 9:00 PM ET Tue-Sat (02:00 UTC)
+- Last Triggered: 2025-11-13T07:00:01Z (2:00 AM ET)
+- State: ENABLED ✅
+
+**Execution**: prod-daily-screeners-batch-4-fzq5b
+- Start Time: 2025-11-13T07:00:03Z (2:00 AM ET)
+- Completion: 2025-11-13T07:00:24Z (2:00 AM ET)
+- Duration: ~21 seconds
+- Status: ❌ FAILED
+
+**Error Logs**:
+```
+2025-11-13T07:00:09.464922Z ERROR:__main__:Invalid BATCH_NUMBER env var: 4. Must be 1, 2, or 3.
+2025-11-13T07:00:09.632777Z WARNING: Container called exit(1).
+2025-11-13T07:00:21.268622Z ERROR:__main__:Invalid BATCH_NUMBER env var: 4. Must be 1, 2, or 3.
+2025-11-13T07:00:21.426012Z WARNING: Container called exit(1).
+```
+
+---
+
+## Batch-5 Execution Log
+
+**Scheduler**: prod-trigger-daily-screeners-batch-5
+- Schedule: `30 3 * * 2-6` = 10:30 PM ET Tue-Sat (03:30 UTC)
+- Last Triggered: 2025-11-13T08:30:01Z (3:30 AM ET)
+- State: ENABLED ✅
+
+**Execution**: prod-daily-screeners-batch-5-w7sfr
+- Start Time: 2025-11-13T08:30:03Z (3:30 AM ET)
+- Completion: 2025-11-13T08:30:23Z (3:30 AM ET)
+- Duration: ~20 seconds
+- Status: ❌ FAILED
+
+**Error Logs**:
+```
+2025-11-13T08:30:10.864800Z ERROR:__main__:Invalid BATCH_NUMBER env var: 5. Must be 1, 2, or 3.
+2025-11-13T08:30:11.191401Z WARNING: Container called exit(1).
+2025-11-13T08:30:20.021875Z ERROR:__main__:Invalid BATCH_NUMBER env var: 5. Must be 1, 2, or 3.
+2025-11-13T08:30:20.195519Z WARNING: Container called exit(1).
+```
+
+---
+
+## Root Cause Analysis
+
+**Problem**: Docker image `us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/daily-screeners:latest` is outdated.
+
+**Details**:
+- Image last updated: November 11, 2025
+- Code merged with 5-batch support: November 13, 2025
+- Gap: Image is 2 days old and doesn't have the updated validation logic
+
+**Code Mismatch**:
+- Old code validates: `if batch_number not in [1, 2, 3]`
+- New code validates: `if batch_number not in [1, 2, 3, 4, 5]`
+- Terraform correctly passes BATCH_NUMBER=4 and BATCH_NUMBER=5
+- Container rejects them as invalid
+
+---
+
+## Resolution Required
+
+### Immediate Action Needed:
+```bash
+cd /home/nameci/projects/GoingMerry-Stonks/backend
+
+# Rebuild with latest code (includes 5-batch support)
+docker build -f jobs/Dockerfile \
+  -t us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/daily-screeners:latest .
+
+# Push to Artifact Registry
+docker push us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/daily-screeners:latest
+```
+
+### Verification:
+After deploying the new image, tonight's scheduled runs should succeed:
+- Batch-1: 4:30 PM ET (21:30 UTC)
+- Batch-2: 6:00 PM ET (23:00 UTC)
+- Batch-3: 7:30 PM ET (00:30 UTC next day)
+- Batch-4: 9:00 PM ET (02:00 UTC next day)
+- Batch-5: 10:30 PM ET (03:30 UTC next day)
+
+---
+
+## Summary
+
+- ✅ Schedulers working correctly
+- ✅ Jobs triggering on time
+- ❌ Container image outdated (missing 5-batch code)
+- ❌ Both batch-4 and batch-5 failing validation
+- 🔧 Action Required: Rebuild and push Docker image
+
+**Impact**: Batch-4 and Batch-5 stocks (O-Z, ~2400 stocks) not being screened until image is updated.

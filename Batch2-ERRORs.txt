@@ -1,0 +1,29 @@
+# Batch 2 Error Summary - prod-daily-screeners-batch-2
+# Generated: November 13, 2025
+
+## Error Log Analysis
+
+### Timeout Errors (2 occurrences)
+These are from older runs that exceeded the 2-hour (7200 second) timeout:
+
+2025-11-13T02:40:49.425035Z - Terminating task because it has reached the maximum timeout of 7200 seconds.
+2025-11-13T04:41:04.480888Z - Terminating task because it has reached the maximum timeout of 7200 seconds.
+
+Note: The timeout has since been increased to 3 hours (10800 seconds) via terraform.
+
+### Most Recent Execution Status
+Latest run (prod-daily-screeners-batch-2-wmghq):
+- Status: ✅ COMPLETED SUCCESSFULLY
+- Completion: 2025-11-13T06:10:24Z
+- Duration: ~33 minutes (1992 seconds)
+- Results: Screeners completed, data saved to Firestore
+- Errors: No application errors (only timeout errors from previous runs)
+
+### Application-Level Errors
+None found in recent successful run. The yfinance 404 errors are filtered out by design.
+
+## Recommendations
+1. Monitor tonight's runs (after timeout increase to 3 hours)
+2. Previous timeout issues should be resolved
+3. Consider adding performance metrics tracking
+

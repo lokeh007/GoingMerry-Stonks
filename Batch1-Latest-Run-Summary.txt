@@ -1,0 +1,121 @@
+# Batch-1 Latest Run Summary
+# Generated: November 13, 2025 at 6:40 PM EST
+
+## Status: ⚠️ Scheduled Run Did Not Execute Tonight
+
+### Current Situation
+- **Current Time**: 6:40 PM EST (November 13, 2025)
+- **Expected Schedule**: 4:30 PM ET (21:30 UTC) Monday-Friday
+- **Last Scheduler Trigger**: 2025-11-13T02:30:01Z (Nov 12, 9:30 PM ET)
+- **Status**: ❌ Tonight's 4:30 PM run has NOT triggered yet
+
+### Most Recent Execution (Test Run)
+**Execution**: prod-daily-screeners-batch-1-w2dsr
+- **Start Time**: 2025-11-13T16:16:33Z (11:16 AM EST)
+- **End Time**: 2025-11-13T16:40:28Z (11:40 AM EST)
+- **Duration**: ~24 minutes (23 min 54 sec)
+- **Status**: ✅ COMPLETED SUCCESSFULLY
+- **Stocks Processed**: 3,113 stocks (A-D range)
+- **Results**: 0 stocks passed screeners, saved to Firestore
+
+---
+
+## Last 50 Log Lines (from 11:16 AM run)
+
+```
+Container called exit(0).
+INFO:__main__:==================================================================
+INFO:__main__:DAILY STOCK SCREENERS - Completed successfully
+INFO:__main__:==================================================================
+WARNING:__main__:Failed to cleanup old runs: day is out of range for month
+INFO:__main__:✓ Saved to Firestore: screeners/smart_money/runs/2025-11-13
+INFO:__main__:Saving smart_money results to Firestore...
+INFO:__main__:⏱  Execution time: 716.3 seconds
+INFO:__main__:✗ Failed (errors): 0 tickers
+INFO:__main__:⚠ Not found (404): 0 tickers
+INFO:__main__:✓ Screening complete: 0 stocks passed
+
+[Rate Limiting Observed at End of Run]
+ERROR:app.services.yfinance_provider:Error fetching options flow for DZZ: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYNT: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYNR: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYNF: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYN: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYLG: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYLD: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYCQU: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYCQR: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYCQ: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYBTY: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DYAI: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DY: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXYZ: Too Many Requests. Rate limited. Try after a while.
+INFO:__main__:Progress: 3100/3113 (99.6%) | Rate: 4.35 tickers/sec | ETA: 0.0 min
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXYN: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXUV: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXST: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXR: Too Many Requests. Rate limited. Try after a while.
+ERROR:app.services.yfinance_provider:Error fetching options flow for DXPE: Too Many Requests. Rate limited. Try after a while.
+```
+
+---
+
+## Key Observations
+
+### 1. Rate Limiting
+- ⚠️ **yfinance rate limiting** observed at end of run
+- Multiple "Too Many Requests. Rate limited. Try after a while." errors
+- This happened around ticker 3100/3113 (near the end)
+- **Impact**: Options flow data not retrieved for ~20-30 tickers
+- **Severity**: Low - job completed successfully, core screening done
+
+### 2. Cleanup Warning
+- ⚠️ "Failed to cleanup old runs: day is out of range for month"
+- This is a date handling issue in the cleanup logic
+- **Impact**: Old Firestore runs not being deleted
+- **Severity**: Low - doesn't affect current run results
+
+### 3. Scheduler Issue
+- 🚨 **Tonight's scheduled run (4:30 PM ET) did NOT trigger**
+- Scheduler shows last attempt was yesterday (Nov 12, 9:30 PM ET)
+- **Possible causes**:
+  - Scheduler configuration issue
+  - Cloud Scheduler service issue
+  - Schedule needs verification (cron: `30 21 * * 1-5`)
+
+---
+
+## Investigation Needed
+
+### Why didn't the scheduler trigger tonight?
+
+**Check scheduler state**:
+```bash
+gcloud scheduler jobs describe prod-trigger-daily-screeners-batch-1 \
+  --location=us-east1 --project=sylvan-earth-477020-u6
+```
+
+**Manual trigger for tonight**:
+```bash
+gcloud scheduler jobs run prod-trigger-daily-screeners-batch-1 \
+  --location=us-east1 --project=sylvan-earth-477020-u6
+```
+
+**Check if other batches had the same issue**:
+```bash
+# Check batch-2 (should trigger at 6:00 PM ET)
+gcloud run jobs executions list --job=prod-daily-screeners-batch-2 \
+  --region=us-east5 --limit=3 --project=sylvan-earth-477020-u6
+```
+
+---
+
+## Summary
+
+- ✅ Test execution from 11:16 AM completed successfully
+- ✅ Core screening functionality working
+- ⚠️ Minor rate limiting at end of run (Smart Money screener)
+- ⚠️ Cleanup function has date bug
+- 🚨 **Tonight's scheduled 4:30 PM run did NOT trigger** - needs investigation
+
+**Action Required**: Investigate why Cloud Scheduler didn't trigger tonight's batch-1 run.
