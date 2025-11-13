@@ -407,8 +407,36 @@ async def get_gann_levels(
                 detail=f"Could not fetch current price for {ticker}"
             )
 
-        # Use provided reference price or default to 52-week low
-        ref_price = reference_price if reference_price else (week_52_low or current_price)
+        # Validate and determine reference price
+        if reference_price:
+            # Validate user-provided reference price
+            if reference_price <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Reference price must be positive"
+                )
+            if reference_price > current_price * 2:
+                logger.warning(
+                    f"Reference price ${reference_price:.2f} is >2x current price ${current_price:.2f}"
+                )
+            ref_price = reference_price
+        elif week_52_low:
+            ref_price = week_52_low
+            # Warn if current price is significantly above 52-week low
+            if current_price > week_52_low * 1.5:
+                pct_above = ((current_price / week_52_low - 1) * 100)
+                logger.warning(
+                    f"{ticker} is {pct_above:.0f}% above 52-week low "
+                    f"(${current_price:.2f} vs ${week_52_low:.2f})"
+                )
+        else:
+            # No reference price or 52-week data available
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot calculate Gann levels for {ticker}: "
+                "No reference price provided and no 52-week data available. "
+                "Please provide a reference_price parameter."
+            )
 
         logger.info(
             f"Calculating Gann levels for {ticker}: "
