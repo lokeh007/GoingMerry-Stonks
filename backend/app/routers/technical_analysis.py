@@ -339,6 +339,16 @@ async def get_gann_levels(
         ge=1,
         le=10,
     ),
+    tolerance: float = Query(
+        0.02,
+        description="Tolerance for key level detection as percentage (default: 0.02 = 2%)",
+        ge=0.001,
+        le=0.10,
+    ),
+    include_metadata: bool = Query(
+        False,
+        description="Include detailed metadata (angle, rotation, strength) for each level",
+    ),
     allow_extreme_reference_price: bool = Query(
         False,
         description="Allow reference price >2x current price (default: false)",
@@ -360,6 +370,11 @@ async def get_gann_levels(
     - **ticker**: Stock ticker symbol
     - **reference_price**: Starting price for calculations (default: 52-week low)
     - **num_levels**: Number of levels to calculate (default: 5)
+    - **tolerance**: Tolerance for key level detection as percentage (default: 0.02 = 2%).
+      Determines how close the price must be to a level to be considered "at" that level.
+      Range: 0.001 (0.1%) to 0.10 (10%)
+    - **include_metadata**: Include detailed metadata for each level (angle, rotation, strength,
+      distance from current price). When false (default), returns simple price lists.
     - **allow_extreme_reference_price**: Allow reference price >2x current price
       (default: false). Used for analyzing historical levels after major price drops.
 
@@ -458,20 +473,31 @@ async def get_gann_levels(
 
         logger.info(
             f"Calculating Gann levels for {ticker}: "
-            f"current={current_price:.2f}, reference={ref_price:.2f}"
+            f"current={current_price:.2f}, reference={ref_price:.2f}, "
+            f"metadata={include_metadata}"
         )
 
-        # Calculate Gann levels
-        gann_levels = gann_calc.calculate_gann_levels(
-            current_price=current_price,
-            reference_price=ref_price,
-            num_levels=num_levels,
-        )
+        # Calculate Gann levels (with or without metadata)
+        if include_metadata:
+            gann_levels = gann_calc.calculate_gann_levels_with_metadata(
+                current_price=current_price,
+                reference_price=ref_price,
+                num_levels=num_levels,
+                tolerance=tolerance,
+            )
+        else:
+            gann_levels = gann_calc.calculate_gann_levels(
+                current_price=current_price,
+                reference_price=ref_price,
+                num_levels=num_levels,
+                tolerance=tolerance,
+            )
 
         # Check if at key level
         key_level_check = gann_calc.is_at_key_level(
             current_price=current_price,
             reference_price=ref_price,
+            tolerance=tolerance,
         )
 
         result = {
@@ -487,6 +513,7 @@ async def get_gann_levels(
             "current_position": gann_levels["current_position"],
             "at_key_level": key_level_check,
             "num_levels_calculated": num_levels,
+            "metadata_included": include_metadata,
         }
 
         logger.info(
