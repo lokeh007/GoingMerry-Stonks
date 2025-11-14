@@ -95,9 +95,9 @@ variable "docker_image" {
 }
 
 variable "smart_money_docker_image" {
-  description = "Docker image for Smart Money screener (Options Flow)"
+  description = "Docker image for Smart Money screener (Options Flow) - Uses same backend image since job is included"
   type        = string
-  default     = "us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/smart-money-screeners:latest"
+  default     = "us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/api:latest"
 }
 
 variable "regular_screeners_rate_limit" {
@@ -235,6 +235,10 @@ resource "google_cloud_run_v2_job" "regular_screeners_batch" {
       containers {
         image = var.docker_image
 
+        # Command to run daily screeners job
+        command = ["python"]
+        args    = ["/app/jobs/run_daily_screeners.py"]
+
         resources {
           limits = {
             cpu    = var.job_cpu
@@ -322,6 +326,10 @@ resource "google_cloud_run_v2_job" "smart_money_screeners_batch" {
 
       containers {
         image = var.smart_money_docker_image
+
+        # Command to run smart money screener job
+        command = ["python"]
+        args    = ["/app/jobs/run_smart_money_screener.py"]
 
         resources {
           limits = {
