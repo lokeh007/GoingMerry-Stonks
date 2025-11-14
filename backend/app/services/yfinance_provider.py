@@ -43,7 +43,18 @@ class TokenBucket:
             rate: Number of tokens to add per time_unit (e.g., 100 = 100 requests/min)
             capacity: Maximum bucket capacity (burst size)
             time_unit: Time window in seconds (default: 60 = 1 minute)
+
+        Raises:
+            ValueError: If rate, capacity, or time_unit are not positive
         """
+        # Validate parameters
+        if rate <= 0:
+            raise ValueError(f"rate must be positive, got {rate}")
+        if capacity <= 0:
+            raise ValueError(f"capacity must be positive, got {capacity}")
+        if time_unit <= 0:
+            raise ValueError(f"time_unit must be positive, got {time_unit}")
+
         self.rate = rate  # tokens per time_unit
         self.capacity = capacity  # max tokens
         self.tokens = capacity  # start full
@@ -82,8 +93,17 @@ class TokenBucket:
             True if tokens acquired, False if not available (non-blocking mode only)
 
         Raises:
+            ValueError: If tokens is not positive or exceeds capacity
             TimeoutError: If timeout exceeded while waiting for tokens
         """
+        # Validate tokens parameter
+        if tokens <= 0:
+            raise ValueError(f"tokens must be positive, got {tokens}")
+        if tokens > self.capacity:
+            raise ValueError(
+                f"Cannot acquire {tokens} tokens (bucket capacity is {self.capacity})"
+            )
+
         start_time = time.time()
 
         while True:
@@ -901,17 +921,18 @@ class YFinanceProvider:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            # Acquire rate limit tokens based on actual expiries checked (up to 5)
-            tokens_needed = min(5, len(expiries))
+            # Acquire rate limit tokens based on actual expiries checked (up to 3)
+            # Note: Options data endpoint is more restrictive, so we check fewer expiries
+            tokens_needed = min(3, len(expiries))
             if not _skip_rate_limit:
                 self._acquire_rate_limit(tokens=tokens_needed)
 
-            # Aggregate volume across all expiries (limit to first 5)
+            # Aggregate volume across all expiries (limit to first 3 for rate limiting)
             total_call_volume = 0
             total_put_volume = 0
             expiries_checked = 0
 
-            for expiry in expiries[:5]:  # Check first 5 expiries
+            for expiry in expiries[:3]:  # Check first 3 expiries (conservative for rate limits)
                 try:
                     opt_chain = stock.option_chain(expiry)
 
@@ -1422,7 +1443,7 @@ class YFinanceProvider:
             if include_technical:
                 tokens_needed += 1
             if include_options_flow:
-                tokens_needed += 5  # Checks 5 expiries
+                tokens_needed += 3  # Checks 3 expiries (conservative for rate limits)
             if include_volatility:
                 tokens_needed += 1
             if include_analyst_insider:
