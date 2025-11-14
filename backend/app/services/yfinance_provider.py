@@ -15,7 +15,6 @@ import time
 import threading
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
-from functools import wraps
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -144,10 +143,12 @@ class YFinanceProvider:
         # Data cache (for results)
         self.cache: Dict[str, Any] = {}
         self.cache_ttl = timedelta(minutes=15)  # Match data delay
+        self.cache_lock = threading.Lock()  # Thread safety for cache
 
         # Ticker object cache (for yf.Ticker instances)
         self.ticker_cache: Dict[str, Tuple[yf.Ticker, datetime]] = {}
         self.ticker_cache_ttl = timedelta(minutes=5)  # Shorter TTL for ticker objects
+        self.ticker_cache_lock = threading.Lock()  # Thread safety for ticker cache
 
         # Centralized rate limiter (token bucket)
         self.rate_limiter = TokenBucket(
@@ -178,19 +179,21 @@ class YFinanceProvider:
         symbol_upper = symbol.upper()
         now = datetime.now()
 
-        # Check if ticker is cached and not expired
-        if symbol_upper in self.ticker_cache:
-            ticker, cached_time = self.ticker_cache[symbol_upper]
-            if now - cached_time < self.ticker_cache_ttl:
-                logger.debug(f"Using cached ticker object for {symbol_upper}")
-                return ticker
+        # Thread-safe cache access
+        with self.ticker_cache_lock:
+            # Check if ticker is cached and not expired
+            if symbol_upper in self.ticker_cache:
+                ticker, cached_time = self.ticker_cache[symbol_upper]
+                if now - cached_time < self.ticker_cache_ttl:
+                    logger.debug(f"Using cached ticker object for {symbol_upper}")
+                    return ticker
 
-        # Create new ticker and cache it
-        logger.debug(f"Creating new ticker object for {symbol_upper}")
-        ticker = yf.Ticker(symbol_upper)
-        self.ticker_cache[symbol_upper] = (ticker, now)
+            # Create new ticker and cache it
+            logger.debug(f"Creating new ticker object for {symbol_upper}")
+            ticker = yf.Ticker(symbol_upper)
+            self.ticker_cache[symbol_upper] = (ticker, now)
 
-        return ticker
+            return ticker
 
     def _acquire_rate_limit(self, tokens: int = 1) -> None:
         """
@@ -202,7 +205,7 @@ class YFinanceProvider:
         self.rate_limiter.acquire(tokens=tokens)
 
     def get_technical_indicators(
-        self, ticker: str, period: str = "6mo"
+        self, ticker: str, period: str = "6mo", _skip_rate_limit: bool = False
     ) -> Dict[str, Any]:
         """
         Fetch technical indicators for a stock.
@@ -210,6 +213,7 @@ class YFinanceProvider:
         Args:
             ticker: Stock ticker symbol
             period: Time period (1mo, 3mo, 6mo, 1y, 2y, 5y)
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing RSI, MACD, and other indicators
@@ -218,15 +222,17 @@ class YFinanceProvider:
             ValueError: If ticker is invalid or data unavailable
         """
         try:
-            cache_key = f"{ticker}_{period}_indicators"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_{period}_indicators"
+            cached_data = self._get_cached_data(cache_key)
+            if cached_data is not None:
                 logger.info(f"Returning cached indicators for {ticker}")
-                return self.cache[cache_key]["data"]
+                return cached_data
 
             logger.info(f"Fetching technical indicators for {ticker} ({period})")
 
-            # Acquire rate limit token
-            self._acquire_rate_limit()
+            # Acquire rate limit token (unless called from batch operation)
+            if not _skip_rate_limit:
+                self._acquire_rate_limit()
 
             # Fetch historical data using cached ticker
             stock = self._get_ticker(ticker)
@@ -283,7 +289,7 @@ class YFinanceProvider:
             raise ValueError(f"Failed to fetch indicators for {ticker}: {str(e)}")
 
     def get_historical_data(
-        self, ticker: str, period: str = "6mo", interval: str = "1d"
+        self, ticker: str, period: str = "6mo", interval: str = "1d", _skip_rate_limit: bool = False
     ) -> pd.DataFrame:
         """
         Fetch historical OHLCV data for pattern detection.
@@ -292,6 +298,7 @@ class YFinanceProvider:
             ticker: Stock ticker symbol
             period: Time period (1mo, 3mo, 6mo, 1y, 2y, 5y)
             interval: Data interval (1d, 1wk, 1mo)
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             DataFrame with OHLCV data
@@ -300,15 +307,17 @@ class YFinanceProvider:
             ValueError: If ticker is invalid or data unavailable
         """
         try:
-            cache_key = f"{ticker}_{period}_{interval}_hist"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_{period}_{interval}_hist"
+            cached_data = self._get_cached_data(cache_key)
+            if cached_data is not None:
                 logger.info(f"Returning cached historical data for {ticker}")
-                return self.cache[cache_key]["data"]
+                return cached_data
 
             logger.info(f"Fetching historical data for {ticker} ({period}, {interval})")
 
-            # Acquire rate limit token
-            self._acquire_rate_limit()
+            # Acquire rate limit token (unless called from batch operation)
+            if not _skip_rate_limit:
+                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -328,7 +337,7 @@ class YFinanceProvider:
             logger.error(f"Error fetching historical data for {ticker}: {e}")
             raise ValueError(f"Failed to fetch historical data for {ticker}: {str(e)}")
 
-    def get_fundamentals(self, ticker: str) -> Dict[str, Any]:
+    def get_fundamentals(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
         """
         Fetch fundamental data for a stock using yfinance.
 
@@ -348,6 +357,7 @@ class YFinanceProvider:
 
         Args:
             ticker: Stock ticker symbol
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing fundamental metrics
@@ -360,15 +370,20 @@ class YFinanceProvider:
             This is normal - caller should handle missing data gracefully.
         """
         try:
-            cache_key = f"{ticker}_fundamentals"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_fundamentals"
+            cached_data = self._get_cached_data(cache_key)
+
+            if cached_data is not None:
+
                 logger.info(f"Returning cached fundamentals for {ticker}")
-                return self.cache[cache_key]["data"]
+
+                return cached_data
 
             logger.info(f"Fetching fundamentals for {ticker}")
 
-            # Acquire rate limit token
-            self._acquire_rate_limit()
+            # Acquire rate limit token (unless called from batch operation)
+            if not _skip_rate_limit:
+                self._acquire_rate_limit()
 
             # Use cached ticker object (important: reuse for subsequent calls)
             stock = self._get_ticker(ticker)
@@ -607,9 +622,10 @@ class YFinanceProvider:
         """
         try:
             cache_key = "vix_data"
-            if self._is_cached(cache_key):
+            cached_data = self._get_cached_data(cache_key)
+            if cached_data is not None:
                 logger.info("Returning cached VIX data")
-                return self.cache[cache_key]["data"]
+                return cached_data
 
             logger.info("Fetching VIX data")
 
@@ -834,7 +850,7 @@ class YFinanceProvider:
         else:
             return False
 
-    def get_options_flow_metrics(self, ticker: str) -> Dict[str, Any]:
+    def get_options_flow_metrics(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
         """
         Fetch options flow metrics for "Smart Money" screening.
 
@@ -848,6 +864,7 @@ class YFinanceProvider:
 
         Args:
             ticker: Stock ticker symbol
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing options flow metrics
@@ -858,15 +875,16 @@ class YFinanceProvider:
             Sweep detection would require premium data feeds.
         """
         try:
-            cache_key = f"{ticker}_options_flow"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_options_flow"
+            cached_data = self._get_cached_data(cache_key)
+
+            if cached_data is not None:
+
                 logger.info(f"Returning cached options flow for {ticker}")
-                return self.cache[cache_key]["data"]
+
+                return cached_data
 
             logger.info(f"Fetching options flow metrics for {ticker}")
-
-            # Acquire rate limit token (checking 5 expiries = 5 tokens)
-            self._acquire_rate_limit(tokens=5)
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -887,7 +905,12 @@ class YFinanceProvider:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            # Aggregate volume across all expiries (limit to first 5 to avoid rate limits)
+            # Acquire rate limit tokens based on actual expiries checked (up to 5)
+            tokens_needed = min(5, len(expiries))
+            if not _skip_rate_limit:
+                self._acquire_rate_limit(tokens=tokens_needed)
+
+            # Aggregate volume across all expiries (limit to first 5)
             total_call_volume = 0
             total_put_volume = 0
             expiries_checked = 0
@@ -979,7 +1002,7 @@ class YFinanceProvider:
                 "timestamp": datetime.now().isoformat(),
             }
 
-    def get_analyst_and_insider_data(self, ticker: str) -> Dict[str, Any]:
+    def get_analyst_and_insider_data(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
         """
         Fetch analyst coverage and insider transaction data for "The Undiscovered" screening.
 
@@ -990,20 +1013,26 @@ class YFinanceProvider:
 
         Args:
             ticker: Stock ticker symbol
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing analyst and insider data
         """
         try:
-            cache_key = f"{ticker}_analyst_insider"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_analyst_insider"
+            cached_data = self._get_cached_data(cache_key)
+
+            if cached_data is not None:
+
                 logger.info(f"Returning cached analyst/insider data for {ticker}")
-                return self.cache[cache_key]["data"]
+
+                return cached_data
 
             logger.info(f"Fetching analyst and insider data for {ticker}")
 
-            # Acquire rate limit token
-            self._acquire_rate_limit()
+            # Acquire rate limit token (unless called from batch operation)
+            if not _skip_rate_limit:
+                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -1164,7 +1193,7 @@ class YFinanceProvider:
             "timestamp": datetime.now().isoformat(),
         }
 
-    def get_volatility_metrics(self, ticker: str) -> Dict[str, Any]:
+    def get_volatility_metrics(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
         """
         Get volatility metrics for The Coiled Spring screener.
 
@@ -1175,20 +1204,26 @@ class YFinanceProvider:
 
         Args:
             ticker: Stock ticker symbol
+            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing volatility metrics and NR7 detection
         """
         try:
-            cache_key = f"{ticker}_volatility"
-            if self._is_cached(cache_key):
+            cache_key = f"{ticker.upper()}_volatility"
+            cached_data = self._get_cached_data(cache_key)
+
+            if cached_data is not None:
+
                 logger.info(f"Returning cached volatility metrics for {ticker}")
-                return self.cache[cache_key]["data"]
+
+                return cached_data
 
             logger.info(f"Fetching volatility metrics for {ticker}")
 
-            # Acquire rate limit token
-            self._acquire_rate_limit()
+            # Acquire rate limit token (unless called from batch operation)
+            if not _skip_rate_limit:
+                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -1411,9 +1446,10 @@ class YFinanceProvider:
             # Fetch requested data types
             if include_fundamentals:
                 try:
-                    cache_key = f"{ticker}_fundamentals"
-                    if self._is_cached(cache_key):
-                        result["fundamentals"] = self.cache[cache_key]["data"]
+                    cache_key = f"{ticker.upper()}_fundamentals"
+                    cached_data = self._get_cached_data(cache_key)
+                    if cached_data is not None:
+                        result["fundamentals"] = cached_data
                     else:
                         # Inline fundamentals fetching
                         info = stock.info
@@ -1451,28 +1487,36 @@ class YFinanceProvider:
 
             if include_technical:
                 try:
-                    result["technical_indicators"] = self.get_technical_indicators(ticker)
+                    result["technical_indicators"] = self.get_technical_indicators(
+                        ticker, _skip_rate_limit=True
+                    )
                 except Exception as e:
                     logger.warning(f"Error fetching technical indicators in batch: {e}")
                     result["technical_indicators"] = {"error": str(e)}
 
             if include_options_flow:
                 try:
-                    result["options_flow"] = self.get_options_flow_metrics(ticker)
+                    result["options_flow"] = self.get_options_flow_metrics(
+                        ticker, _skip_rate_limit=True
+                    )
                 except Exception as e:
                     logger.warning(f"Error fetching options flow in batch: {e}")
                     result["options_flow"] = {"error": str(e)}
 
             if include_volatility:
                 try:
-                    result["volatility"] = self.get_volatility_metrics(ticker)
+                    result["volatility"] = self.get_volatility_metrics(
+                        ticker, _skip_rate_limit=True
+                    )
                 except Exception as e:
                     logger.warning(f"Error fetching volatility in batch: {e}")
                     result["volatility"] = {"error": str(e)}
 
             if include_analyst_insider:
                 try:
-                    result["analyst_insider"] = self.get_analyst_and_insider_data(ticker)
+                    result["analyst_insider"] = self.get_analyst_and_insider_data(
+                        ticker, _skip_rate_limit=True
+                    )
                 except Exception as e:
                     logger.warning(f"Error fetching analyst/insider data in batch: {e}")
                     result["analyst_insider"] = {"error": str(e)}
@@ -1489,19 +1533,39 @@ class YFinanceProvider:
             raise ValueError(f"Failed to fetch comprehensive data for {ticker}: {str(e)}")
 
     def _is_cached(self, key: str) -> bool:
-        """Check if data is in cache and not expired."""
-        if key not in self.cache:
-            return False
+        """Check if data is in cache and not expired (thread-safe)."""
+        with self.cache_lock:
+            if key not in self.cache:
+                return False
 
-        cached_time = self.cache[key]["timestamp"]
-        return datetime.now() - cached_time < self.cache_ttl
+            cached_time = self.cache[key]["timestamp"]
+            return datetime.now() - cached_time < self.cache_ttl
+
+    def _get_cached_data(self, key: str) -> Optional[Any]:
+        """
+        Get cached data if available and not expired (thread-safe).
+
+        Returns:
+            Cached data if available and not expired, None otherwise
+        """
+        with self.cache_lock:
+            if key not in self.cache:
+                return None
+
+            cached_time = self.cache[key]["timestamp"]
+            if datetime.now() - cached_time < self.cache_ttl:
+                return self.cache[key]["data"]
+            return None
 
     def _cache_data(self, key: str, data: Any) -> None:
-        """Store data in cache with timestamp."""
-        self.cache[key] = {"data": data, "timestamp": datetime.now()}
+        """Store data in cache with timestamp (thread-safe)."""
+        with self.cache_lock:
+            self.cache[key] = {"data": data, "timestamp": datetime.now()}
 
     def clear_cache(self) -> None:
-        """Clear all cached data (both result cache and ticker cache)."""
-        self.cache.clear()
-        self.ticker_cache.clear()
+        """Clear all cached data (both result cache and ticker cache) - thread-safe."""
+        with self.cache_lock:
+            self.cache.clear()
+        with self.ticker_cache_lock:
+            self.ticker_cache.clear()
         logger.info("All caches cleared (data cache + ticker cache)")
