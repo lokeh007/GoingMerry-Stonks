@@ -2,10 +2,10 @@
 fastapi==0.121.2
 uvicorn[standard]==0.38.0
 pydantic==2.12.4
-python-dotenv==1.0.1
+python-dotenv==1.2.1
 
 # HTTP & API
-requests==2.32.4
+requests==2.32.5
 
 # Market Data
 yfinance==0.2.66
@@ -16,4 +16,4 @@ google-cloud-firestore==2.21.0
 # Scientific Computing & Financial Models
 numpy==1.26.4
 scipy==1.11.4
-pandas==2.1.4
+pandas==2.2.3
