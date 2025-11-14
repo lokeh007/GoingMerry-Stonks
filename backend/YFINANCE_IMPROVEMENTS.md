@@ -129,7 +129,7 @@ def get_comprehensive_data(
     Optimizations:
     1. Single ticker object for all operations
     2. Acquires all rate limit tokens upfront
-    3. Parallel data fetching where possible
+    3. Sequential data fetching with individual error handling
     """
 ```
 
