@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Daily Stock Screeners - Cloud Run Job (Batched Execution)
+Regular Stock Screeners - Cloud Run Job (Batched Execution)
 
-Runs The Undiscovered, The Coiled Spring, and Smart Money screeners against the full
-NYSE + NASDAQ universe (~6000 stocks) in 5 batches to respect yfinance rate limits.
+Runs The Undiscovered and The Coiled Spring screeners against the full NYSE + NASDAQ
+universe (~6000 stocks) in 5 batches to respect yfinance rate limits.
+
+NOTE: Smart Money (options flow) screener runs separately in run_smart_money_screener.py
+      due to higher API token consumption (45 req/min vs 60 req/min).
 
 Batch Schedule:
 - Batch 1: 4:30 PM ET - Tickers A-D (~1200 stocks)
@@ -12,8 +15,9 @@ Batch Schedule:
 - Batch 4: 9:00 PM ET - Tickers O-S (~1200 stocks)
 - Batch 5: 10:30 PM ET - Tickers T-Z (~1200 stocks)
 
-Estimated runtime per batch: 40-60 minutes
-Data sources: SEC EDGAR + NASDAQ FTP (free, no API keys required)
+Estimated runtime per batch: ~90 minutes
+Rate limit: 60 requests/minute
+Data sources: Yahoo Finance (free, no API keys required)
 """
 
 import os
@@ -675,19 +679,20 @@ class DailyScreenerJob:
         job_start_time = datetime.now()
 
         logger.info("=" * 80)
-        logger.info("DAILY STOCK SCREENERS - Starting execution")
+        logger.info("REGULAR STOCK SCREENERS - Starting execution")
+        logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
+        logger.info(f"Rate limit: 60 requests/minute")
         logger.info("=" * 80)
 
         try:
             # Get stock universe
             universe = self.get_full_exchange_universe()
 
-            # Run screeners
+            # Run regular screeners only (Smart Money runs separately)
             screeners = [
                 ("undiscovered", self.run_undiscovered_screener),
                 ("coiled_spring", self.run_coiled_spring_screener),
-                ("smart_money", self.run_smart_money_screener),
             ]
 
             for screener_name, screener_func in screeners:
@@ -709,7 +714,7 @@ class DailyScreenerJob:
             total_seconds = int(total_execution_time % 60)
 
             logger.info("=" * 80)
-            logger.info("DAILY STOCK SCREENERS - Completed successfully")
+            logger.info("REGULAR STOCK SCREENERS - Completed successfully")
             logger.info(f"⏱  Total execution time: {total_minutes}m {total_seconds}s ({total_execution_time:.1f} seconds)")
             logger.info("=" * 80)
 

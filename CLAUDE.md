@@ -38,16 +38,25 @@ Internet
     │  ├─ Secrets: Secret Manager (Polygon API key, DB credentials)
     │  └─ Security: Cloud Armor (rate limiting, geo-blocking)
     │
-    └─ Batch Screeners: Cloud Run Jobs (Automated Daily)
-       ├─ Batch 1: prod-daily-screeners-batch-1 (4:30 PM ET, A-D stocks)
-       ├─ Batch 2: prod-daily-screeners-batch-2 (6:00 PM ET, E-J stocks)
-       ├─ Batch 3: prod-daily-screeners-batch-3 (7:30 PM ET, K-N stocks)
-       ├─ Batch 4: prod-daily-screeners-batch-4 (9:00 PM ET, O-S stocks)
-       ├─ Batch 5: prod-daily-screeners-batch-5 (10:30 PM ET, T-Z stocks)
+    └─ Batch Screeners: Cloud Run Jobs (Automated Daily, Sequential)
+       ├─ Regular Screeners (Undiscovered + Coiled Spring, 60 req/min):
+       │  ├─ Batch 1: 4:30 PM ET → 6:00 PM (A-D, ~1200 stocks)
+       │  ├─ Batch 2: 6:00 PM ET → 7:30 PM (E-J, ~1200 stocks)
+       │  ├─ Batch 3: 7:30 PM ET → 9:00 PM (K-N, ~1200 stocks)
+       │  ├─ Batch 4: 9:00 PM ET → 10:30 PM (O-S, ~1200 stocks)
+       │  └─ Batch 5: 10:30 PM ET → 12:00 AM (T-Z, ~1200 stocks)
+       │
+       ├─ Smart Money Screeners (Options Flow, 45 req/min):
+       │  ├─ Batch 1: 12:00 AM ET → 2:00 AM (A-D, ~1200 stocks)
+       │  ├─ Batch 2: 2:00 AM ET → 4:00 AM (E-J, ~1200 stocks)
+       │  ├─ Batch 3: 4:00 AM ET → 6:00 AM (K-N, ~1200 stocks)
+       │  ├─ Batch 4: 6:00 AM ET → 8:00 AM (O-S, ~1200 stocks)
+       │  └─ Batch 5: 8:00 AM ET → 10:00 AM (T-Z, ~1200 stocks)
+       │
        ├─ Coverage: ~6,000 NYSE + NASDAQ stocks total
-       ├─ Schedulers: 5 Cloud Schedulers (Mon-Fri, 90-min stagger)
+       ├─ Schedulers: 10 Cloud Schedulers (Mon-Fri, zero overlap)
        ├─ Cache: Saves results to Firestore for instant frontend loading
-       └─ Sources: SEC EDGAR + NASDAQ FTP (100% free)
+       └─ Sources: Yahoo Finance (free, no API keys required)
 ```
 
 ### Infrastructure Components
@@ -56,21 +65,23 @@ Internet
 |-----------|---------------|--------|
 | **Frontend (PRIMARY)** | goingmerry-stonks (Firebase) | ✅ Active |
 | **Backend Service** | prod-backend-api | ✅ Running (Cloud Run) |
-| **Batch Job 1** | prod-daily-screeners-batch-1 | ✅ Active (A-D stocks) |
-| **Batch Job 2** | prod-daily-screeners-batch-2 | ✅ Active (E-J stocks) |
-| **Batch Job 3** | prod-daily-screeners-batch-3 | ✅ Active (K-N stocks) |
-| **Batch Job 4** | prod-daily-screeners-batch-4 | ✅ Active (O-S stocks) |
-| **Batch Job 5** | prod-daily-screeners-batch-5 | ✅ Active (T-Z stocks) |
-| **Cloud Scheduler 1** | prod-trigger-daily-screeners-batch-1 | ✅ Enabled (4:30 PM ET) |
-| **Cloud Scheduler 2** | prod-trigger-daily-screeners-batch-2 | ✅ Enabled (6:00 PM ET) |
-| **Cloud Scheduler 3** | prod-trigger-daily-screeners-batch-3 | ✅ Enabled (7:30 PM ET) |
-| **Cloud Scheduler 4** | prod-trigger-daily-screeners-batch-4 | ✅ Enabled (9:00 PM ET) |
-| **Cloud Scheduler 5** | prod-trigger-daily-screeners-batch-5 | ✅ Enabled (10:30 PM ET) |
+| **Regular Screeners 1** | prod-regular-screeners-batch-1 | ✅ Active (A-D, 4:30 PM) |
+| **Regular Screeners 2** | prod-regular-screeners-batch-2 | ✅ Active (E-J, 6:00 PM) |
+| **Regular Screeners 3** | prod-regular-screeners-batch-3 | ✅ Active (K-N, 7:30 PM) |
+| **Regular Screeners 4** | prod-regular-screeners-batch-4 | ✅ Active (O-S, 9:00 PM) |
+| **Regular Screeners 5** | prod-regular-screeners-batch-5 | ✅ Active (T-Z, 10:30 PM) |
+| **Smart Money 1** | prod-smart-money-screeners-batch-1 | ✅ Active (A-D, 12:00 AM) |
+| **Smart Money 2** | prod-smart-money-screeners-batch-2 | ✅ Active (E-J, 2:00 AM) |
+| **Smart Money 3** | prod-smart-money-screeners-batch-3 | ✅ Active (K-N, 4:00 AM) |
+| **Smart Money 4** | prod-smart-money-screeners-batch-4 | ✅ Active (O-S, 6:00 AM) |
+| **Smart Money 5** | prod-smart-money-screeners-batch-5 | ✅ Active (T-Z, 8:00 AM) |
 | **Firestore Database** | (default) | ✅ Active (screener cache) |
 | **Database** | prod-postgres-d05b2fe9 | ✅ RUNNABLE (PostgreSQL 15) |
 | **Frontend (Backup)** | sylvan-earth-477020-u6-frontend | ✅ Active (Cloud Storage) |
 | **VPC Connector** | prod-vpc-connector | ✅ Active |
 | **Artifact Registry** | prod-backend | ✅ Active |
+
+**Note**: 10 Cloud Schedulers trigger the jobs above (5 for regular, 5 for Smart Money).
 
 ### Deployment Method
 
