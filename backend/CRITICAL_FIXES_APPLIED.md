@@ -99,10 +99,12 @@ if not _skip_rate_limit:
 - ✅ Token usage: Optimal (only acquire what's needed)
 
 ### Overall Impact:
-- **50% reduction** in actual token consumption (fixed double counting)
+- **Up to 50% reduction** in actual token consumption when data is not cached (fixed double counting)
 - **100% safety** for concurrent operations
-- **2x cache hit rate** improvement
+- **2x cache hit rate** improvement (fixed key normalization)
 - **More reliable** under load
+
+**Note**: Performance gains depend on cache hit rates. When data is cached, the upfront token acquisition in `get_comprehensive_data()` means tokens are allocated but not used by individual methods. This is an acceptable trade-off for simpler code and better concurrent request handling.
 
 ---
 

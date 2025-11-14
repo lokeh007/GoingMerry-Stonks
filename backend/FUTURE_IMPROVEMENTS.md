@@ -47,36 +47,36 @@ if tokens > self.capacity:
 
 ---
 
-### 3. Fix Documentation Accuracy
-**Issue**: `get_comprehensive_data()` documentation claims "Parallel data fetching" but implementation is sequential
+### 3. Token Efficiency with Cached Data (Code Review Feedback)
+**Issue**: `get_comprehensive_data()` acquires tokens upfront even when data is cached
 
-**Current Documentation** (line 1360):
+**Current Behavior** (line 1440):
 ```python
-Optimizations:
-1. Single ticker object for all operations
-2. Acquires all rate limit tokens upfront
-3. Parallel data fetching where possible  # ← INACCURATE
+# Acquire all tokens upfront
+if tokens_needed > 0:
+    self._acquire_rate_limit(tokens=tokens_needed)
+
+# Later... if data is cached, methods return without using tokens
+if cached_data is not None:
+    return cached_data  # Token was acquired but not used
 ```
 
-**Fix**: Either update docs or implement actual parallel fetching
+**Trade-off Analysis**:
+- ❌ Wastes tokens when data is cached (token acquired but not used)
+- ✅ Simpler code logic (acquire once vs. check cache, then acquire conditionally)
+- ✅ Prevents deadlock scenarios in concurrent environments
+- ✅ More predictable rate limiting behavior
 
-**Option A - Update Docs**:
-```python
-Optimizations:
-1. Single ticker object for all operations
-2. Acquires all rate limit tokens upfront
-3. Sequential data fetching with error isolation
-```
+**Potential Fix** (if cache hit rates are high >50%):
+- Check caches before acquiring tokens
+- Calculate exact tokens needed based on cache misses
+- Acquire only necessary tokens
+- Note: Adds complexity and potential for race conditions
 
-**Option B - Implement Parallel Fetching**:
-- Use `threading.Thread` or `concurrent.futures.ThreadPoolExecutor`
-- Fetch technical, options_flow, volatility, analyst_insider in parallel
-- Wait for all to complete
-- Note: May not provide much benefit due to GIL
-
-**Impact**: Medium (misleading documentation)  
-**Effort**: Trivial (Option A) or Moderate (Option B)  
-**Estimated Time**: 5 minutes (Option A) or 2 hours (Option B)
+**Impact**: Low (acceptable trade-off unless cache hit rates are consistently high)
+**Effort**: Moderate (requires careful thread-safe cache checking before token acquisition)
+**Estimated Time**: 2-3 hours
+**Recommendation**: Monitor cache hit rates in production; only optimize if >50% hit rate
 
 ---
 
@@ -154,7 +154,7 @@ time.sleep(min(sleep_time, 0.1))
 
 ### Fix Soon (next PR):
 1. ⏳ Input validation for TokenBucket (10 minutes total)
-2. ⏳ Fix documentation accuracy (5 minutes or 2 hours depending on approach)
+2. ⏳ Token efficiency with cached data (2-3 hours, only if cache hit rate >50%)
 
 ### Fix Later (technical debt):
 3. ⏳ Test code duplication (1-2 hours)
@@ -162,7 +162,7 @@ time.sleep(min(sleep_time, 0.1))
 
 ---
 
-**Total Estimated Effort for "Fix Soon"**: ~30 minutes (validation) + 5 minutes (docs) = 35 minutes  
+**Total Estimated Effort for "Fix Soon"**: ~10 minutes (validation) + 2-3 hours (token efficiency, if needed) = 2.5-3.5 hours
 **Total Estimated Effort for "Fix Later"**: 1-2 hours (tests)
 
 ---

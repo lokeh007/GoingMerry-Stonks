@@ -374,9 +374,7 @@ class YFinanceProvider:
             cached_data = self._get_cached_data(cache_key)
 
             if cached_data is not None:
-
                 logger.info(f"Returning cached fundamentals for {ticker}")
-
                 return cached_data
 
             logger.info(f"Fetching fundamentals for {ticker}")
@@ -879,9 +877,7 @@ class YFinanceProvider:
             cached_data = self._get_cached_data(cache_key)
 
             if cached_data is not None:
-
                 logger.info(f"Returning cached options flow for {ticker}")
-
                 return cached_data
 
             logger.info(f"Fetching options flow metrics for {ticker}")
@@ -1023,9 +1019,7 @@ class YFinanceProvider:
             cached_data = self._get_cached_data(cache_key)
 
             if cached_data is not None:
-
                 logger.info(f"Returning cached analyst/insider data for {ticker}")
-
                 return cached_data
 
             logger.info(f"Fetching analyst and insider data for {ticker}")
@@ -1214,9 +1208,7 @@ class YFinanceProvider:
             cached_data = self._get_cached_data(cache_key)
 
             if cached_data is not None:
-
                 logger.info(f"Returning cached volatility metrics for {ticker}")
-
                 return cached_data
 
             logger.info(f"Fetching volatility metrics for {ticker}")
