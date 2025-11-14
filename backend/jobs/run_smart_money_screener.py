@@ -9,7 +9,7 @@ This screener is separated from regular screeners due to higher API token consum
 (3 tokens per ticker for options data vs 2 tokens for regular screeners).
 
 Batch Schedule (Sequential - runs AFTER regular screeners complete):
-- Batch 1: 12:00 AM ET - Tickers A-D (~1200 stocks)
+- Batch 1: 12:15 AM ET - Tickers A-D (~1200 stocks) [15-min buffer after regular batch 5]
 - Batch 2: 2:00 AM ET - Tickers E-J (~1200 stocks)
 - Batch 3: 4:00 AM ET - Tickers K-N (~1200 stocks)
 - Batch 4: 6:00 AM ET - Tickers O-S (~1200 stocks)
@@ -80,15 +80,16 @@ class SmartMoneyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # IMPORTANT: Use reduced rate limit (45 req/min) for options flow screener
-        self.yf_provider = YFinanceProvider(rate_limit=45, burst_capacity=15)
+        # Read rate limit from environment variable (default: 45 req/min for options flow)
+        rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '45'))
+        self.yf_provider = YFinanceProvider(rate_limit=rate_limit, burst_capacity=15)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
         if batch_number:
             logger.info(f"Initializing Smart Money Screener Job - Batch {batch_number}/5")
-            logger.info(f"Rate limit: 45 requests/minute (reduced for options data)")
+            logger.info(f"Rate limit: {rate_limit} requests/minute")
 
     def _categorize_error(
         self,
