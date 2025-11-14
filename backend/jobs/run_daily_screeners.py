@@ -81,7 +81,14 @@ class DailyScreenerJob:
         """
         self.db = firestore.Client()
         # Read rate limit from environment variable (default: 60 req/min)
-        rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '60'))
+        try:
+            rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '60'))
+            if rate_limit <= 0 or rate_limit > 100:
+                logger.warning(f"Invalid rate limit {rate_limit}, using default 60")
+                rate_limit = 60
+        except ValueError:
+            logger.warning("Invalid RATE_LIMIT_PER_MINUTE value, using default 60")
+            rate_limit = 60
         self.yf_provider = YFinanceProvider(rate_limit=rate_limit, burst_capacity=15)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
@@ -279,8 +286,7 @@ class DailyScreenerJob:
                     continue
                 if analyst_count > max_analyst_coverage:
                     continue
-                if require_insider_buying and not has_insider_buying:
-                    continue
+                # Note: insider_buying check removed (require_insider_buying=False)
 
                 # Calculate score (0-100)
                 score = self._calculate_undiscovered_score(

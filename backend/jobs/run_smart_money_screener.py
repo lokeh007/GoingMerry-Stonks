@@ -81,7 +81,14 @@ class SmartMoneyScreenerJob:
         """
         self.db = firestore.Client()
         # Read rate limit from environment variable (default: 45 req/min for options flow)
-        rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '45'))
+        try:
+            rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '45'))
+            if rate_limit <= 0 or rate_limit > 100:
+                logger.warning(f"Invalid rate limit {rate_limit}, using default 45")
+                rate_limit = 45
+        except ValueError:
+            logger.warning("Invalid RATE_LIMIT_PER_MINUTE value, using default 45")
+            rate_limit = 45
         self.yf_provider = YFinanceProvider(rate_limit=rate_limit, burst_capacity=15)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
