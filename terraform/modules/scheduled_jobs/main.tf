@@ -12,7 +12,7 @@
 # - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes 12:00 AM
 #
 # Smart Money Screeners (45 req/min):
-# - Batch 1: 12:00 AM ET (A-D, ~1200 stocks) → finishes 2:00 AM
+# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes 2:15 AM [15-min buffer]
 # - Batch 2: 2:00 AM ET (E-J, ~1200 stocks) → finishes 4:00 AM
 # - Batch 3: 4:00 AM ET (K-N, ~1200 stocks) → finishes 6:00 AM
 # - Batch 4: 6:00 AM ET (O-S, ~1200 stocks) → finishes 8:00 AM
@@ -100,6 +100,28 @@ variable "smart_money_docker_image" {
   default     = "us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/smart-money-screeners:latest"
 }
 
+variable "regular_screeners_rate_limit" {
+  description = "API requests per minute for regular screeners (Undiscovered + Coiled Spring)"
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.regular_screeners_rate_limit > 0 && var.regular_screeners_rate_limit <= 100
+    error_message = "Regular screeners rate limit must be between 1 and 100 requests per minute."
+  }
+}
+
+variable "smart_money_rate_limit" {
+  description = "API requests per minute for Smart Money screeners (Options Flow) - lower due to higher token consumption"
+  type        = number
+  default     = 45
+
+  validation {
+    condition     = var.smart_money_rate_limit > 0 && var.smart_money_rate_limit <= 100
+    error_message = "Smart Money rate limit must be between 1 and 100 requests per minute."
+  }
+}
+
 # ============================================================================
 # LOCALS - Batch Configuration
 # ============================================================================
@@ -112,31 +134,31 @@ locals {
     batch-1 = {
       number      = 1
       description = "Regular stock screeners - Batch 1 (A-D, ~1200 stocks)"
-      schedule    = "30 16 * * 1-5"  # 4:30 PM ET Mon-Fri (20:30 UTC)
+      schedule    = "30 16 * * 1-5"  # 4:30 PM ET Mon-Fri
       time_label  = "4:30 PM ET"
     }
     batch-2 = {
       number      = 2
       description = "Regular stock screeners - Batch 2 (E-J, ~1200 stocks)"
-      schedule    = "0 18 * * 1-5"   # 6:00 PM ET Mon-Fri (22:00 UTC)
+      schedule    = "0 18 * * 1-5"   # 6:00 PM ET Mon-Fri
       time_label  = "6:00 PM ET"
     }
     batch-3 = {
       number      = 3
       description = "Regular stock screeners - Batch 3 (K-N, ~1200 stocks)"
-      schedule    = "30 19 * * 1-5"  # 7:30 PM ET Mon-Fri (23:30 UTC)
+      schedule    = "30 19 * * 1-5"  # 7:30 PM ET Mon-Fri
       time_label  = "7:30 PM ET"
     }
     batch-4 = {
       number      = 4
       description = "Regular stock screeners - Batch 4 (O-S, ~1200 stocks)"
-      schedule    = "0 21 * * 1-5"   # 9:00 PM ET Mon-Fri (01:00 UTC next day)
+      schedule    = "0 21 * * 1-5"   # 9:00 PM ET Mon-Fri
       time_label  = "9:00 PM ET"
     }
     batch-5 = {
       number      = 5
       description = "Regular stock screeners - Batch 5 (T-Z, ~1200 stocks)"
-      schedule    = "30 22 * * 1-5"  # 10:30 PM ET Mon-Fri (02:30 UTC next day)
+      schedule    = "30 22 * * 1-5"  # 10:30 PM ET Mon-Fri
       time_label  = "10:30 PM ET"
     }
   }
@@ -144,35 +166,36 @@ locals {
   # Define batch configurations for Smart Money Screener
   # Staggered 2 hours apart, runs AFTER regular screeners complete
   # Runs: Smart Money Options Flow only (45 req/min)
+  # NOTE: Batch 1 starts at 12:15 AM (15-min buffer) to prevent overlap with regular batch 5
   smart_money_batches = {
     batch-1 = {
       number      = 1
       description = "Smart Money screener - Batch 1 (A-D, ~1200 stocks)"
-      schedule    = "0 0 * * 2-6"    # 12:00 AM ET Tue-Sat (04:00 UTC)
-      time_label  = "12:00 AM ET"
+      schedule    = "15 0 * * 2-6"   # 12:15 AM ET Tue-Sat (15-min buffer after regular batch 5)
+      time_label  = "12:15 AM ET"
     }
     batch-2 = {
       number      = 2
       description = "Smart Money screener - Batch 2 (E-J, ~1200 stocks)"
-      schedule    = "0 2 * * 2-6"    # 2:00 AM ET Tue-Sat (06:00 UTC)
+      schedule    = "0 2 * * 2-6"    # 2:00 AM ET Tue-Sat
       time_label  = "2:00 AM ET"
     }
     batch-3 = {
       number      = 3
       description = "Smart Money screener - Batch 3 (K-N, ~1200 stocks)"
-      schedule    = "0 4 * * 2-6"    # 4:00 AM ET Tue-Sat (08:00 UTC)
+      schedule    = "0 4 * * 2-6"    # 4:00 AM ET Tue-Sat
       time_label  = "4:00 AM ET"
     }
     batch-4 = {
       number      = 4
       description = "Smart Money screener - Batch 4 (O-S, ~1200 stocks)"
-      schedule    = "0 6 * * 2-6"    # 6:00 AM ET Tue-Sat (10:00 UTC)
+      schedule    = "0 6 * * 2-6"    # 6:00 AM ET Tue-Sat
       time_label  = "6:00 AM ET"
     }
     batch-5 = {
       number      = 5
       description = "Smart Money screener - Batch 5 (T-Z, ~1200 stocks)"
-      schedule    = "0 8 * * 2-6"    # 8:00 AM ET Tue-Sat (12:00 UTC)
+      schedule    = "0 8 * * 2-6"    # 8:00 AM ET Tue-Sat
       time_label  = "8:00 AM ET"
     }
   }
@@ -248,6 +271,11 @@ resource "google_cloud_run_v2_job" "regular_screeners_batch" {
         env {
           name  = "PYTHONUNBUFFERED"
           value = "1"
+        }
+
+        env {
+          name  = "RATE_LIMIT_PER_MINUTE"
+          value = tostring(var.regular_screeners_rate_limit)
         }
       }
     }
@@ -331,6 +359,11 @@ resource "google_cloud_run_v2_job" "smart_money_screeners_batch" {
         env {
           name  = "PYTHONUNBUFFERED"
           value = "1"
+        }
+
+        env {
+          name  = "RATE_LIMIT_PER_MINUTE"
+          value = tostring(var.smart_money_rate_limit)
         }
       }
     }
@@ -461,6 +494,30 @@ output "smart_money_job_names" {
     for key, job in google_cloud_run_v2_job.smart_money_screeners_batch :
     key => job.name
   }
+}
+
+output "regular_job_ids" {
+  description = "Cloud Run Job IDs for regular screeners (all batches) - for monitoring and automation"
+  value = {
+    for key, job in google_cloud_run_v2_job.regular_screeners_batch :
+    key => job.id
+  }
+}
+
+output "smart_money_job_ids" {
+  description = "Cloud Run Job IDs for Smart Money screeners (all batches) - for monitoring and automation"
+  value = {
+    for key, job in google_cloud_run_v2_job.smart_money_screeners_batch :
+    key => job.id
+  }
+}
+
+output "all_job_ids" {
+  description = "Combined map of all Cloud Run Job IDs (regular + smart money) - for backwards compatibility"
+  value = merge(
+    { for key, job in google_cloud_run_v2_job.regular_screeners_batch : "regular-${key}" => job.id },
+    { for key, job in google_cloud_run_v2_job.smart_money_screeners_batch : "smart-money-${key}" => job.id }
+  )
 }
 
 output "regular_scheduler_names" {

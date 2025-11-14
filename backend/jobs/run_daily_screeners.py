@@ -80,13 +80,16 @@ class DailyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        self.yf_provider = YFinanceProvider()
+        # Read rate limit from environment variable (default: 60 req/min)
+        rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '60'))
+        self.yf_provider = YFinanceProvider(rate_limit=rate_limit, burst_capacity=15)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
         if batch_number:
             logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
+            logger.info(f"Rate limit: {rate_limit} requests/minute")
 
     def _categorize_error(
         self,
