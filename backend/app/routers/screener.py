@@ -380,8 +380,16 @@ async def get_smart_money(
 
         for ticker in stock_universe:
             try:
-                # Get options flow metrics
-                options_flow = yf_provider.get_options_flow_metrics(ticker)
+                # Get comprehensive data (fundamentals + options flow) in a single optimized call
+                data = yf_provider.get_comprehensive_data(
+                    ticker,
+                    include_fundamentals=True,
+                    include_options_flow=True
+                )
+
+                # Extract options flow and fundamentals from comprehensive data
+                options_flow = data.get("options_flow", {})
+                fundamentals = data.get("fundamentals", {})
 
                 # Skip if no options data
                 if options_flow.get("call_volume") is None or options_flow.get("put_volume") is None:
@@ -404,9 +412,6 @@ async def get_smart_money(
                 if avg_vol > 0 and total_vol < (avg_vol * unusual_volume_multiplier):
                     logger.debug(f"{ticker}: Failed unusual volume check ({total_vol} vs {avg_vol})")
                     continue
-
-                # Get basic fundamentals for display
-                fundamentals = yf_provider.get_fundamentals(ticker)
 
                 # Calculate smart money score (0-100)
                 score = _calculate_smart_money_score(options_flow, min_call_to_put_ratio)
@@ -553,11 +558,16 @@ async def get_the_undiscovered(
 
         for ticker in stock_universe:
             try:
-                # Get fundamentals (includes institutional ownership)
-                fundamentals = yf_provider.get_fundamentals(ticker)
+                # Get comprehensive data (fundamentals + analyst/insider) in a single optimized call
+                data = yf_provider.get_comprehensive_data(
+                    ticker,
+                    include_fundamentals=True,
+                    include_analyst_insider=True
+                )
 
-                # Get analyst and insider data
-                analyst_insider = yf_provider.get_analyst_and_insider_data(ticker)
+                # Extract fundamentals and analyst/insider data from comprehensive data
+                fundamentals = data.get("fundamentals", {})
+                analyst_insider = data.get("analyst_insider", {})
 
                 # Extract metrics
                 inst_ownership = fundamentals.get("institutional_ownership")
@@ -721,16 +731,21 @@ async def get_coiled_spring(
 
         for ticker in stock_universe:
             try:
-                # Get fundamentals (for company name, sector, price)
-                fundamentals = yf_provider.get_fundamentals(ticker)
+                # Get comprehensive data (fundamentals + volatility) in a single optimized call
+                data = yf_provider.get_comprehensive_data(
+                    ticker,
+                    include_fundamentals=True,
+                    include_volatility=True
+                )
+
+                # Extract fundamentals and volatility data from comprehensive data
+                fundamentals = data.get("fundamentals", {})
+                volatility = data.get("volatility", {})
 
                 if not fundamentals or fundamentals.get("current_price") is None:
                     logger.debug(f"{ticker}: Skipping - no fundamentals")
                     failed_tickers.append(ticker)
                     continue
-
-                # Get volatility metrics
-                volatility = yf_provider.get_volatility_metrics(ticker)
 
                 if "error" in volatility:
                     logger.debug(f"{ticker}: Skipping - volatility error: {volatility['error']}")

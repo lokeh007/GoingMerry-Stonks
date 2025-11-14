@@ -126,20 +126,20 @@ class YFinanceProvider:
     - Stock universe fetching (NYSE + NASDAQ)
 
     Optimizations:
-    - Centralized token bucket rate limiting (100 req/min, burst=20)
+    - Centralized token bucket rate limiting (60 req/min, burst=15)
     - Ticker object caching (5-minute TTL) to reduce API calls
     - Batch data fetching for multiple metrics at once
 
     Note: Data is 15-minute delayed (free tier)
     """
 
-    def __init__(self, rate_limit: int = 100, burst_capacity: int = 20):
+    def __init__(self, rate_limit: int = 60, burst_capacity: int = 15):
         """
         Initialize the YFinance provider with rate limiting and caching.
 
         Args:
-            rate_limit: Maximum requests per minute (default: 100)
-            burst_capacity: Maximum burst size (default: 20)
+            rate_limit: Maximum requests per minute (default: 60)
+            burst_capacity: Maximum burst size (default: 15)
         """
         # Data cache (for results)
         self.cache: Dict[str, Any] = {}
