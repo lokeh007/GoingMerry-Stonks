@@ -11,58 +11,24 @@ Run: python test_yfinance_unit.py
 import time
 import sys
 import os
-import threading
-from typing import Optional
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Try to import the actual TokenBucket implementation from production code
-# If it fails (e.g., yfinance not installed), extract just the TokenBucket class
+# Import TokenBucket from the rate_limiter module
 try:
-    # Read the source file and extract just the TokenBucket class
-    with open(os.path.join(os.path.dirname(__file__), "app", "services", "yfinance_provider.py"), 'r') as f:
-        lines = f.readlines()
-
-    # Find TokenBucket class definition
-    token_bucket_code = []
-    in_token_bucket = False
-    indent_level = None
-
-    for line in lines:
-        if 'class TokenBucket:' in line:
-            in_token_bucket = True
-            indent_level = len(line) - len(line.lstrip())
-            token_bucket_code.append(line)
-        elif in_token_bucket:
-            # Check if we've exited the class (new class or unindented line)
-            current_indent = len(line) - len(line.lstrip())
-            if line.strip() and current_indent <= indent_level:
-                break
-            token_bucket_code.append(line)
-
-    # Create minimal globals for execution
-    import logging
-    exec_globals = {
-        'threading': threading,
-        'time': time,
-        'Optional': Optional,
-        'logger': logging.getLogger('test')
-    }
-
-    # Execute the TokenBucket class definition
-    exec(''.join(token_bucket_code), exec_globals)
-    TokenBucket = exec_globals['TokenBucket']
-
-    # For YFinanceProvider, we need more dependencies - skip it for now
-    YFinanceProvider = None
-
-    print("✓ Using production TokenBucket implementation (extracted)")
-except Exception as e:
-    print(f"⚠ Could not load production code ({e}), tests will be limited")
-    import traceback
-    traceback.print_exc()
+    from app.services.rate_limiter import TokenBucket
+    print("✓ Using production TokenBucket implementation")
+except ImportError as e:
+    print(f"⚠ Could not import TokenBucket ({e}), tests will be limited")
     TokenBucket = None
+
+# Try to import YFinanceProvider (may fail if yfinance not installed)
+try:
+    from app.services.yfinance_provider import YFinanceProvider
+    print("✓ Using production YFinanceProvider implementation")
+except ImportError as e:
+    print(f"⚠ Could not import YFinanceProvider ({e}), cache tests will be skipped")
     YFinanceProvider = None
 
 
