@@ -4,7 +4,7 @@
   "private": true,
   "description": "Stock and Options Analysis Platform - Frontend",
   "dependencies": {
-    "axios": "^1.6.5",
+    "axios": "^1.13.2",
     "chart.js": "^4.4.1",
     "firebase": "^12.5.0",
     "react": "^18.2.0",
