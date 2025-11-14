@@ -95,31 +95,31 @@ locals {
     batch-1 = {
       number      = 1
       description = "Daily stock screeners - Batch 1 (A-D, ~1200 stocks)"
-      schedule    = "30 21 * * 1-5"  # 4:30 PM ET = 21:30 UTC
+      schedule    = "30 16 * * 1-5"  # 4:30 PM ET Mon-Fri
       time_label  = "4:30 PM ET"
     }
     batch-2 = {
       number      = 2
       description = "Daily stock screeners - Batch 2 (E-J, ~1200 stocks)"
-      schedule    = "0 23 * * 1-5"   # 6:00 PM ET = 23:00 UTC (90 min after batch-1)
+      schedule    = "0 18 * * 1-5"   # 6:00 PM ET Mon-Fri (90 min after batch-1)
       time_label  = "6:00 PM ET"
     }
     batch-3 = {
       number      = 3
       description = "Daily stock screeners - Batch 3 (K-N, ~1200 stocks)"
-      schedule    = "30 0 * * 2-6"   # 7:30 PM ET = 00:30 UTC next day (90 min after batch-2)
+      schedule    = "30 19 * * 1-5"  # 7:30 PM ET Mon-Fri (90 min after batch-2)
       time_label  = "7:30 PM ET"
     }
     batch-4 = {
       number      = 4
       description = "Daily stock screeners - Batch 4 (O-S, ~1200 stocks)"
-      schedule    = "0 2 * * 2-6"    # 9:00 PM ET = 02:00 UTC next day (90 min after batch-3)
+      schedule    = "0 21 * * 1-5"   # 9:00 PM ET Mon-Fri (90 min after batch-3)
       time_label  = "9:00 PM ET"
     }
     batch-5 = {
       number      = 5
       description = "Daily stock screeners - Batch 5 (T-Z, ~1200 stocks)"
-      schedule    = "30 3 * * 2-6"   # 10:30 PM ET = 03:30 UTC next day (90 min after batch-4)
+      schedule    = "30 22 * * 1-5"  # 10:30 PM ET Mon-Fri (90 min after batch-4)
       time_label  = "10:30 PM ET"
     }
   }
