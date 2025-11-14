@@ -47,6 +47,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 # Copy application code
 COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser jobs ./jobs
 
 # Switch to non-root user
 USER appuser

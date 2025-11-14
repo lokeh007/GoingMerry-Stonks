@@ -6,8 +6,9 @@ PROJECT_ID="sylvan-earth-477020-u6"
 REGION="us-east5"
 REPOSITORY="prod-backend"
 IMAGE_NAME="api"
-VERSION="v1.0.0"
+VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "v1.0.0")
 FULL_IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${VERSION}"
+LATEST_IMAGE_PATH="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:latest"
 
 echo "======================================"
 echo "Building and Pushing Backend Image"
@@ -26,17 +27,21 @@ gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 echo ""
 echo "Building Docker image..."
 cd backend
-docker build -t ${FULL_IMAGE_PATH} .
+docker build -t ${FULL_IMAGE_PATH} -t ${LATEST_IMAGE_PATH} .
 
 # Push to Artifact Registry
 echo ""
-echo "Pushing image to Artifact Registry..."
+echo "Pushing images to Artifact Registry..."
 docker push ${FULL_IMAGE_PATH}
+docker push ${LATEST_IMAGE_PATH}
 
 echo ""
 echo "======================================"
-echo "✓ Image successfully built and pushed!"
+echo "✓ Images successfully built and pushed!"
 echo "======================================"
-echo "Image: ${FULL_IMAGE_PATH}"
+echo "Versioned: ${FULL_IMAGE_PATH}"
+echo "Latest:    ${LATEST_IMAGE_PATH}"
 echo ""
-echo "Next step: Run 'terraform apply -auto-approve' to deploy Cloud Run service"
+echo "Next steps:"
+echo "  1. Update Terraform to use image version: ${VERSION}"
+echo "  2. Run 'cd terraform/environments/prod && terraform apply' to deploy"
