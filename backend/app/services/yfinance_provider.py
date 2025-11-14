@@ -3,11 +3,17 @@ YFinance Data Provider Module.
 
 This module provides market data and technical indicators using the yfinance library.
 Used for 15-minute delayed data that complements the Polygon.io real-time feed.
+
+Improvements:
+- Centralized token bucket rate limiting for burst handling
+- Ticker object caching to reduce redundant API calls
+- Batch data fetching for efficient API usage
 """
 
 import logging
 import time
-from typing import Dict, List, Optional, Any
+import threading
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from functools import wraps
 import yfinance as yf
@@ -17,37 +23,96 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def rate_limit(min_interval: float = 0.1):
+class TokenBucket:
     """
-    Decorator to rate limit API calls.
+    Thread-safe token bucket rate limiter.
 
-    Ensures minimum time interval between calls to prevent API throttling.
+    Allows burst requests up to bucket capacity while maintaining
+    an average rate. More flexible than simple interval-based limiting.
 
-    Args:
-        min_interval: Minimum seconds between calls (default: 0.1 = 100ms)
+    Example:
+        # Allow 100 requests per minute with burst capacity of 20
+        limiter = TokenBucket(rate=100, capacity=20, time_unit=60)
+        limiter.acquire()  # Blocks if no tokens available
     """
-    last_called = {}
 
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            func_name = func.__name__
-            now = time.time()
+    def __init__(self, rate: float, capacity: int, time_unit: float = 60.0):
+        """
+        Initialize token bucket.
 
-            if func_name in last_called:
-                elapsed = now - last_called[func_name]
-                if elapsed < min_interval:
-                    sleep_time = min_interval - elapsed
-                    logger.debug(f"Rate limiting: sleeping {sleep_time:.3f}s before {func_name}")
-                    time.sleep(sleep_time)
+        Args:
+            rate: Number of tokens to add per time_unit (e.g., 100 = 100 requests/min)
+            capacity: Maximum bucket capacity (burst size)
+            time_unit: Time window in seconds (default: 60 = 1 minute)
+        """
+        self.rate = rate  # tokens per time_unit
+        self.capacity = capacity  # max tokens
+        self.tokens = capacity  # start full
+        self.time_unit = time_unit
+        self.lock = threading.Lock()
+        self.last_update = time.time()
 
-            result = func(*args, **kwargs)
-            last_called[func_name] = time.time()
-            return result
+        # Calculate token refill rate per second
+        self.tokens_per_second = rate / time_unit
 
-        return wrapper
+        logger.info(
+            f"TokenBucket initialized: {rate} req/{time_unit}s, "
+            f"capacity={capacity}, refill={self.tokens_per_second:.2f} tokens/sec"
+        )
 
-    return decorator
+    def _refill(self) -> None:
+        """Refill tokens based on elapsed time since last update."""
+        now = time.time()
+        elapsed = now - self.last_update
+
+        # Add tokens based on elapsed time
+        tokens_to_add = elapsed * self.tokens_per_second
+        self.tokens = min(self.capacity, self.tokens + tokens_to_add)
+        self.last_update = now
+
+    def acquire(self, tokens: int = 1, blocking: bool = True, timeout: Optional[float] = None) -> bool:
+        """
+        Acquire tokens from the bucket.
+
+        Args:
+            tokens: Number of tokens to acquire (default: 1)
+            blocking: If True, wait for tokens. If False, return immediately (default: True)
+            timeout: Maximum time to wait in seconds (None = wait forever)
+
+        Returns:
+            True if tokens acquired, False if not available (non-blocking mode only)
+
+        Raises:
+            TimeoutError: If timeout exceeded while waiting for tokens
+        """
+        start_time = time.time()
+
+        while True:
+            with self.lock:
+                self._refill()
+
+                if self.tokens >= tokens:
+                    self.tokens -= tokens
+                    logger.debug(f"Acquired {tokens} token(s), {self.tokens:.1f} remaining")
+                    return True
+
+                if not blocking:
+                    logger.debug(f"Tokens not available ({self.tokens:.1f} < {tokens})")
+                    return False
+
+                # Calculate sleep time until next token available
+                tokens_needed = tokens - self.tokens
+                sleep_time = tokens_needed / self.tokens_per_second
+
+                # Check timeout
+                if timeout is not None:
+                    elapsed = time.time() - start_time
+                    if elapsed >= timeout:
+                        raise TimeoutError(f"Failed to acquire {tokens} tokens within {timeout}s")
+                    sleep_time = min(sleep_time, timeout - elapsed)
+
+            logger.debug(f"Waiting {sleep_time:.2f}s for {tokens} token(s)")
+            time.sleep(min(sleep_time, 0.1))  # Sleep max 100ms at a time
 
 
 class YFinanceProvider:
@@ -60,16 +125,82 @@ class YFinanceProvider:
     - VIX (Volatility Index) data
     - Stock universe fetching (NYSE + NASDAQ)
 
+    Optimizations:
+    - Centralized token bucket rate limiting (100 req/min, burst=20)
+    - Ticker object caching (5-minute TTL) to reduce API calls
+    - Batch data fetching for multiple metrics at once
+
     Note: Data is 15-minute delayed (free tier)
     """
 
-    def __init__(self):
-        """Initialize the YFinance provider."""
+    def __init__(self, rate_limit: int = 100, burst_capacity: int = 20):
+        """
+        Initialize the YFinance provider with rate limiting and caching.
+
+        Args:
+            rate_limit: Maximum requests per minute (default: 100)
+            burst_capacity: Maximum burst size (default: 20)
+        """
+        # Data cache (for results)
         self.cache: Dict[str, Any] = {}
         self.cache_ttl = timedelta(minutes=15)  # Match data delay
-        logger.info("YFinanceProvider initialized")
 
-    @rate_limit(min_interval=0.1)
+        # Ticker object cache (for yf.Ticker instances)
+        self.ticker_cache: Dict[str, Tuple[yf.Ticker, datetime]] = {}
+        self.ticker_cache_ttl = timedelta(minutes=5)  # Shorter TTL for ticker objects
+
+        # Centralized rate limiter (token bucket)
+        self.rate_limiter = TokenBucket(
+            rate=rate_limit,
+            capacity=burst_capacity,
+            time_unit=60.0  # per minute
+        )
+
+        logger.info(
+            f"YFinanceProvider initialized: rate_limit={rate_limit}/min, "
+            f"burst={burst_capacity}, data_cache_ttl={self.cache_ttl.total_seconds()}s, "
+            f"ticker_cache_ttl={self.ticker_cache_ttl.total_seconds()}s"
+        )
+
+    def _get_ticker(self, symbol: str) -> yf.Ticker:
+        """
+        Get or create a cached yfinance Ticker object.
+
+        This reduces redundant API calls when multiple methods need the same ticker.
+        Ticker objects are cached for 5 minutes.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            yf.Ticker object (cached or newly created)
+        """
+        symbol_upper = symbol.upper()
+        now = datetime.now()
+
+        # Check if ticker is cached and not expired
+        if symbol_upper in self.ticker_cache:
+            ticker, cached_time = self.ticker_cache[symbol_upper]
+            if now - cached_time < self.ticker_cache_ttl:
+                logger.debug(f"Using cached ticker object for {symbol_upper}")
+                return ticker
+
+        # Create new ticker and cache it
+        logger.debug(f"Creating new ticker object for {symbol_upper}")
+        ticker = yf.Ticker(symbol_upper)
+        self.ticker_cache[symbol_upper] = (ticker, now)
+
+        return ticker
+
+    def _acquire_rate_limit(self, tokens: int = 1) -> None:
+        """
+        Acquire tokens from the rate limiter before making API calls.
+
+        Args:
+            tokens: Number of tokens to acquire (default: 1)
+        """
+        self.rate_limiter.acquire(tokens=tokens)
+
     def get_technical_indicators(
         self, ticker: str, period: str = "6mo"
     ) -> Dict[str, Any]:
@@ -94,8 +225,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching technical indicators for {ticker} ({period})")
 
-            # Fetch historical data
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Fetch historical data using cached ticker
+            stock = self._get_ticker(ticker)
             df = stock.history(period=period)
 
             if df.empty:
@@ -148,7 +282,6 @@ class YFinanceProvider:
             logger.error(f"Error fetching indicators for {ticker}: {e}")
             raise ValueError(f"Failed to fetch indicators for {ticker}: {str(e)}")
 
-    @rate_limit(min_interval=0.1)
     def get_historical_data(
         self, ticker: str, period: str = "6mo", interval: str = "1d"
     ) -> pd.DataFrame:
@@ -174,7 +307,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching historical data for {ticker} ({period}, {interval})")
 
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Use cached ticker object
+            stock = self._get_ticker(ticker)
             df = stock.history(period=period, interval=interval)
 
             if df.empty:
@@ -191,7 +328,6 @@ class YFinanceProvider:
             logger.error(f"Error fetching historical data for {ticker}: {e}")
             raise ValueError(f"Failed to fetch historical data for {ticker}: {str(e)}")
 
-    @rate_limit(min_interval=0.1)
     def get_fundamentals(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch fundamental data for a stock using yfinance.
@@ -231,7 +367,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching fundamentals for {ticker}")
 
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Use cached ticker object (important: reuse for subsequent calls)
+            stock = self._get_ticker(ticker)
             info = stock.info
 
             # Extract fundamental data with safe defaults
@@ -455,7 +595,6 @@ class YFinanceProvider:
             logger.debug(f"Error calculating revenue growth: {e}")
             return None
 
-    @rate_limit(min_interval=0.2)
     def get_vix_data(self) -> Dict[str, Any]:
         """
         Fetch VIX (Volatility Index) data.
@@ -474,7 +613,11 @@ class YFinanceProvider:
 
             logger.info("Fetching VIX data")
 
-            vix = yf.Ticker("^VIX")
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Use cached ticker object
+            vix = self._get_ticker("^VIX")
             vix_data = vix.history(period="1d")
 
             if vix_data.empty:
@@ -691,7 +834,6 @@ class YFinanceProvider:
         else:
             return False
 
-    @rate_limit(min_interval=0.2)
     def get_options_flow_metrics(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch options flow metrics for "Smart Money" screening.
@@ -723,7 +865,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching options flow metrics for {ticker}")
 
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token (checking 5 expiries = 5 tokens)
+            self._acquire_rate_limit(tokens=5)
+
+            # Use cached ticker object
+            stock = self._get_ticker(ticker)
 
             # Get all available expiration dates
             expiries = stock.options
@@ -761,7 +907,7 @@ class YFinanceProvider:
                         total_put_volume += put_vol
 
                     expiries_checked += 1
-                    time.sleep(0.1)  # Rate limit between expiry calls
+                    # Note: Rate limiting handled by token bucket (5 tokens acquired upfront)
 
                 except Exception as e:
                     logger.debug(f"Error fetching option chain for {ticker} expiry {expiry}: {e}")
@@ -833,7 +979,6 @@ class YFinanceProvider:
                 "timestamp": datetime.now().isoformat(),
             }
 
-    @rate_limit(min_interval=0.1)
     def get_analyst_and_insider_data(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch analyst coverage and insider transaction data for "The Undiscovered" screening.
@@ -857,7 +1002,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching analyst and insider data for {ticker}")
 
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Use cached ticker object
+            stock = self._get_ticker(ticker)
             info = stock.info
 
             # Get analyst coverage count
@@ -926,13 +1075,13 @@ class YFinanceProvider:
                 "timestamp": datetime.now().isoformat(),
             }
 
-    @rate_limit(min_interval=0.1)
     def get_asset_holdings(self, ticker: str) -> Dict[str, Any]:
         """
         Get asset holdings for a company (Bitcoin, Ethereum, Gold).
 
         Note: yfinance doesn't provide direct crypto/gold holdings data.
         This method uses a manually curated mapping of known holders.
+        No API call required - uses static data.
 
         Args:
             ticker: Stock ticker symbol
@@ -1015,7 +1164,6 @@ class YFinanceProvider:
             "timestamp": datetime.now().isoformat(),
         }
 
-    @rate_limit(min_interval=0.1)
     def get_volatility_metrics(self, ticker: str) -> Dict[str, Any]:
         """
         Get volatility metrics for The Coiled Spring screener.
@@ -1039,7 +1187,11 @@ class YFinanceProvider:
 
             logger.info(f"Fetching volatility metrics for {ticker}")
 
-            stock = yf.Ticker(ticker)
+            # Acquire rate limit token
+            self._acquire_rate_limit()
+
+            # Use cached ticker object
+            stock = self._get_ticker(ticker)
 
             # Fetch historical data
             # 1 year for percentile calculation
@@ -1188,6 +1340,154 @@ class YFinanceProvider:
 
         return round(score, 1)
 
+    def get_comprehensive_data(
+        self,
+        ticker: str,
+        include_fundamentals: bool = True,
+        include_technical: bool = False,
+        include_options_flow: bool = False,
+        include_volatility: bool = False,
+        include_analyst_insider: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Batch fetch multiple data types for a ticker in a single optimized call.
+
+        This method is more efficient than calling individual methods because:
+        1. Uses the same cached ticker object for all operations
+        2. Acquires rate limit tokens upfront for all operations
+        3. Reduces overhead from multiple function calls
+
+        Args:
+            ticker: Stock ticker symbol
+            include_fundamentals: Include fundamental data (default: True)
+            include_technical: Include technical indicators (default: False)
+            include_options_flow: Include options flow metrics (default: False)
+            include_volatility: Include volatility metrics (default: False)
+            include_analyst_insider: Include analyst/insider data (default: False)
+
+        Returns:
+            Dict containing requested data types
+
+        Example:
+            >>> provider = YFinanceProvider()
+            >>> data = provider.get_comprehensive_data(
+            ...     "AAPL",
+            ...     include_fundamentals=True,
+            ...     include_technical=True
+            ... )
+            >>> print(data.keys())
+            dict_keys(['ticker', 'fundamentals', 'technical_indicators'])
+        """
+        try:
+            logger.info(
+                f"Fetching comprehensive data for {ticker}: "
+                f"fundamentals={include_fundamentals}, technical={include_technical}, "
+                f"options={include_options_flow}, volatility={include_volatility}, "
+                f"analyst={include_analyst_insider}"
+            )
+
+            result = {"ticker": ticker.upper(), "timestamp": datetime.now().isoformat()}
+
+            # Calculate total tokens needed
+            tokens_needed = 0
+            if include_fundamentals:
+                tokens_needed += 1
+            if include_technical:
+                tokens_needed += 1
+            if include_options_flow:
+                tokens_needed += 5  # Checks 5 expiries
+            if include_volatility:
+                tokens_needed += 1
+            if include_analyst_insider:
+                tokens_needed += 1
+
+            # Acquire all tokens upfront
+            if tokens_needed > 0:
+                self._acquire_rate_limit(tokens=tokens_needed)
+
+            # Get or create cached ticker object (reused for all operations)
+            stock = self._get_ticker(ticker)
+
+            # Fetch requested data types
+            if include_fundamentals:
+                try:
+                    cache_key = f"{ticker}_fundamentals"
+                    if self._is_cached(cache_key):
+                        result["fundamentals"] = self.cache[cache_key]["data"]
+                    else:
+                        # Inline fundamentals fetching
+                        info = stock.info
+                        fundamentals = {
+                            "ticker": ticker.upper(),
+                            "company_name": info.get("longName") or info.get("shortName", ticker),
+                            "sector": info.get("sector"),
+                            "market_cap": info.get("marketCap"),
+                            "peg_ratio": info.get("pegRatio") or info.get("trailingPegRatio"),
+                            "eps_growth": self._calculate_eps_growth(stock),
+                            "revenue_growth": self._calculate_revenue_growth(stock),
+                            "debt_to_equity": info.get("debtToEquity"),
+                            "roe": info.get("returnOnEquity"),
+                            "institutional_ownership": info.get("heldPercentInstitutions"),
+                            "current_ratio": info.get("currentRatio"),
+                            "current_price": info.get("currentPrice") or info.get("regularMarketPrice"),
+                            "pe_ratio": self._calculate_pe_ratio(info),
+                            "week_52_low": info.get("fiftyTwoWeekLow"),
+                            "week_52_high": info.get("fiftyTwoWeekHigh"),
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                        # Convert percentages
+                        if fundamentals["roe"] is not None:
+                            fundamentals["roe"] = fundamentals["roe"] * 100
+                        if fundamentals["institutional_ownership"] is not None:
+                            fundamentals["institutional_ownership"] = fundamentals["institutional_ownership"] * 100
+                        if fundamentals["debt_to_equity"] is not None:
+                            fundamentals["debt_to_equity"] = fundamentals["debt_to_equity"] / 100
+
+                        self._cache_data(cache_key, fundamentals)
+                        result["fundamentals"] = fundamentals
+                except Exception as e:
+                    logger.warning(f"Error fetching fundamentals in batch: {e}")
+                    result["fundamentals"] = {"error": str(e)}
+
+            if include_technical:
+                try:
+                    result["technical_indicators"] = self.get_technical_indicators(ticker)
+                except Exception as e:
+                    logger.warning(f"Error fetching technical indicators in batch: {e}")
+                    result["technical_indicators"] = {"error": str(e)}
+
+            if include_options_flow:
+                try:
+                    result["options_flow"] = self.get_options_flow_metrics(ticker)
+                except Exception as e:
+                    logger.warning(f"Error fetching options flow in batch: {e}")
+                    result["options_flow"] = {"error": str(e)}
+
+            if include_volatility:
+                try:
+                    result["volatility"] = self.get_volatility_metrics(ticker)
+                except Exception as e:
+                    logger.warning(f"Error fetching volatility in batch: {e}")
+                    result["volatility"] = {"error": str(e)}
+
+            if include_analyst_insider:
+                try:
+                    result["analyst_insider"] = self.get_analyst_and_insider_data(ticker)
+                except Exception as e:
+                    logger.warning(f"Error fetching analyst/insider data in batch: {e}")
+                    result["analyst_insider"] = {"error": str(e)}
+
+            logger.info(
+                f"Comprehensive data fetch completed for {ticker}: "
+                f"{len([k for k in result.keys() if k not in ['ticker', 'timestamp']])} data types"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error fetching comprehensive data for {ticker}: {e}")
+            raise ValueError(f"Failed to fetch comprehensive data for {ticker}: {str(e)}")
+
     def _is_cached(self, key: str) -> bool:
         """Check if data is in cache and not expired."""
         if key not in self.cache:
@@ -1201,6 +1501,7 @@ class YFinanceProvider:
         self.cache[key] = {"data": data, "timestamp": datetime.now()}
 
     def clear_cache(self) -> None:
-        """Clear all cached data."""
+        """Clear all cached data (both result cache and ticker cache)."""
         self.cache.clear()
-        logger.info("Cache cleared")
+        self.ticker_cache.clear()
+        logger.info("All caches cleared (data cache + ticker cache)")
