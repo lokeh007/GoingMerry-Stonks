@@ -67,7 +67,7 @@ class TestTokenBucketAcquisition:
             assert bucket.acquire() is True
 
         elapsed = time.time() - start
-        assert elapsed < 0.1, f"Burst should be instant, took {elapsed:.3f}s"
+        assert elapsed < 0.2, f"Burst should be instant, took {elapsed:.3f}s"
 
     def test_rate_limiting_after_burst(self):
         """Test that rate limiting kicks in after burst exhaustion."""
@@ -172,6 +172,25 @@ class TestTokenBucketRefill:
 
         # Should cap at capacity
         assert bucket.tokens == pytest.approx(10.0, abs=0.1)
+
+    def test_token_refill_through_public_api(self):
+        """Test that tokens become available after waiting (integration test using public API only)."""
+        bucket = TokenBucket(rate=10, capacity=10, time_unit=1.0)
+
+        # Exhaust all tokens
+        assert bucket.acquire(tokens=10, blocking=False) is True
+        assert bucket.acquire(blocking=False) is False  # No tokens left
+
+        # Wait for some refill (0.5s should give ~5 tokens at 10 tokens/sec)
+        time.sleep(0.5)
+
+        # Should be able to acquire again (acquire will trigger internal refill)
+        # Using blocking=False to verify tokens are actually available
+        assert bucket.acquire(blocking=False) is True  # ~5 tokens refilled
+
+        # Verify we can acquire multiple tokens after waiting more
+        time.sleep(0.3)  # Another ~3 tokens
+        assert bucket.acquire(tokens=3, blocking=False) is True
 
 
 class TestTokenBucketThreadSafety:

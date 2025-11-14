@@ -35,11 +35,15 @@ class TokenBucket:
 
         Args:
             rate: Number of tokens to add per time_unit (e.g., 100 = 100 requests/min)
-            capacity: Maximum bucket capacity (burst size)
+            capacity: Maximum bucket capacity (burst size) - integer representing max requests
             time_unit: Time window in seconds (default: 60 = 1 minute)
 
         Raises:
             ValueError: If rate, capacity, or time_unit are not positive
+
+        Note:
+            Internal token count (self.tokens) is stored as float for precise refill
+            calculations, but capacity should be an integer representing discrete API calls.
         """
         # Validate parameters
         if rate <= 0:
