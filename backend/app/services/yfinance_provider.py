@@ -913,18 +913,19 @@ class YFinanceProvider:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            # Acquire rate limit tokens based on actual expiries checked (up to 3)
+            # Acquire rate limit tokens based on actual expiries checked (up to 2)
             # Note: Options data endpoint is more restrictive, so we check fewer expiries
-            tokens_needed = min(3, len(expiries))
+            # Changed from 3 to 2 expiries to reduce API calls per ticker (4 → 3 calls)
+            tokens_needed = min(2, len(expiries))
             if not _skip_rate_limit:
                 self._acquire_rate_limit(tokens=tokens_needed)
 
-            # Aggregate volume across all expiries (limit to first 3 for rate limiting)
+            # Aggregate volume across all expiries (limit to first 2 for rate limiting)
             total_call_volume = 0
             total_put_volume = 0
             expiries_checked = 0
 
-            for expiry in expiries[:3]:  # Check first 3 expiries (conservative for rate limits)
+            for expiry in expiries[:2]:  # Check first 2 expiries (conservative for rate limits)
                 try:
                     opt_chain = self._fetch_option_chain(stock, expiry)
 
