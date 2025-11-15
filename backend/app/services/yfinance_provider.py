@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 
 from .rate_limiter import TokenBucket
+from .retry_handler import adaptive_backoff_with_jitter
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,107 @@ class YFinanceProvider:
 
             return ticker
 
+    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    def _fetch_ticker_info(self, ticker: yf.Ticker) -> dict:
+        """
+        Fetch ticker.info with retry logic.
+
+        Wrapper around yfinance Ticker.info that implements exponential backoff
+        with jitter for rate limit handling.
+
+        Args:
+            ticker: yfinance Ticker object
+
+        Returns:
+            Ticker info dictionary
+
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        return ticker.info
+
+    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    def _fetch_ticker_history(self, ticker: yf.Ticker, **kwargs) -> pd.DataFrame:
+        """
+        Fetch ticker.history with retry logic.
+
+        Wrapper around yfinance Ticker.history that implements exponential backoff
+        with jitter for rate limit handling.
+
+        Args:
+            ticker: yfinance Ticker object
+            **kwargs: Arguments to pass to ticker.history()
+
+        Returns:
+            Historical data DataFrame
+
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        return ticker.history(**kwargs)
+
+    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    def _fetch_option_chain(self, ticker: yf.Ticker, expiry: str):
+        """
+        Fetch ticker.option_chain with retry logic.
+
+        Wrapper around yfinance Ticker.option_chain that implements exponential backoff
+        with jitter for rate limit handling.
+
+        Args:
+            ticker: yfinance Ticker object
+            expiry: Expiration date string
+
+        Returns:
+            Option chain object
+
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        return ticker.option_chain(expiry)
+
+    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    def _fetch_insider_transactions(self, ticker: yf.Ticker) -> pd.DataFrame:
+        """
+        Fetch ticker.insider_transactions with retry logic.
+
+        Wrapper around yfinance Ticker.insider_transactions that implements exponential backoff
+        with jitter for rate limit handling.
+
+        Args:
+            ticker: yfinance Ticker object
+
+        Returns:
+            Insider transactions DataFrame
+
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        return ticker.insider_transactions
+
+    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    def _fetch_ticker_financials(self, ticker: yf.Ticker, quarterly: bool = False):
+        """
+        Fetch ticker financials with retry logic.
+
+        Wrapper around yfinance Ticker.financials/quarterly_financials that implements
+        exponential backoff with jitter for rate limit handling.
+
+        Args:
+            ticker: yfinance Ticker object
+            quarterly: If True, fetch quarterly_financials; otherwise fetch annual financials
+
+        Returns:
+            Financials DataFrame
+
+        Raises:
+            Exception: If all retries are exhausted
+        """
+        if quarterly:
+            return ticker.quarterly_financials
+        else:
+            return ticker.financials
+
     def _acquire_rate_limit(self, tokens: int = 1) -> None:
         """
         Acquire tokens from the rate limiter before making API calls.
@@ -146,7 +248,7 @@ class YFinanceProvider:
 
             # Fetch historical data using cached ticker
             stock = self._get_ticker(ticker)
-            df = stock.history(period=period)
+            df = self._fetch_ticker_history(stock, period=period)
 
             if df.empty:
                 raise ValueError(f"No data available for {ticker}")
@@ -231,7 +333,7 @@ class YFinanceProvider:
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
-            df = stock.history(period=period, interval=interval)
+            df = self._fetch_ticker_history(stock, period=period, interval=interval)
 
             if df.empty:
                 raise ValueError(f"No historical data available for {ticker}")
@@ -295,7 +397,7 @@ class YFinanceProvider:
 
             # Use cached ticker object (important: reuse for subsequent calls)
             stock = self._get_ticker(ticker)
-            info = stock.info
+            info = self._fetch_ticker_info(stock)
 
             # Extract fundamental data with safe defaults
             fundamentals = {
@@ -368,7 +470,7 @@ class YFinanceProvider:
         """
         try:
             # Try quarterly financials first
-            quarterly_financials = stock.quarterly_financials
+            quarterly_financials = self._fetch_ticker_financials(stock, quarterly=True)
             if quarterly_financials is not None and not quarterly_financials.empty:
                 # Look for "Basic EPS" or "Diluted EPS" in the quarterly financials
                 eps_rows = [row for row in quarterly_financials.index if 'EPS' in str(row)]
@@ -386,7 +488,7 @@ class YFinanceProvider:
                         return round(growth_rate, 2)
 
             # Try annual financials as fallback
-            annual_financials = stock.financials
+            annual_financials = self._fetch_ticker_financials(stock, quarterly=False)
             if annual_financials is not None and not annual_financials.empty:
                 # Look for "Basic EPS" or "Diluted EPS" in the annual financials
                 eps_rows = [row for row in annual_financials.index if 'EPS' in str(row)]
@@ -457,7 +559,7 @@ class YFinanceProvider:
         """
         try:
             # Try quarterly financials first
-            quarterly_financials = stock.quarterly_financials
+            quarterly_financials = self._fetch_ticker_financials(stock, quarterly=True)
             if quarterly_financials is not None and not quarterly_financials.empty:
                 # Look for "Total Revenue" or similar in the quarterly financials
                 revenue_rows = [
@@ -485,7 +587,7 @@ class YFinanceProvider:
                         return round(growth_rate, 2)
 
             # Try annual financials as fallback
-            annual_financials = stock.financials
+            annual_financials = self._fetch_ticker_financials(stock, quarterly=False)
             if annual_financials is not None and not annual_financials.empty:
                 # Look for "Total Revenue" in annual financials
                 revenue_rows = [
@@ -542,7 +644,7 @@ class YFinanceProvider:
 
             # Use cached ticker object
             vix = self._get_ticker("^VIX")
-            vix_data = vix.history(period="1d")
+            vix_data = self._fetch_ticker_history(vix, period="1d")
 
             if vix_data.empty:
                 raise ValueError("VIX data unavailable")
@@ -824,7 +926,7 @@ class YFinanceProvider:
 
             for expiry in expiries[:3]:  # Check first 3 expiries (conservative for rate limits)
                 try:
-                    opt_chain = stock.option_chain(expiry)
+                    opt_chain = self._fetch_option_chain(stock, expiry)
 
                     # Sum call volumes
                     if opt_chain.calls is not None and 'volume' in opt_chain.calls.columns:
@@ -941,7 +1043,7 @@ class YFinanceProvider:
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
-            info = stock.info
+            info = self._fetch_ticker_info(stock)
 
             # Get analyst coverage count
             analyst_count = info.get("numberOfAnalystOpinions", 0)
@@ -957,7 +1059,7 @@ class YFinanceProvider:
 
             # Try to get insider transactions
             try:
-                insiders = stock.insider_transactions
+                insiders = self._fetch_insider_transactions(stock)
 
                 if insiders is not None and not insiders.empty:
                     # Filter for recent transactions (last 6 months)
@@ -1133,7 +1235,7 @@ class YFinanceProvider:
 
             # Fetch historical data
             # 1 year for percentile calculation
-            hist_1y = stock.history(period="1y")
+            hist_1y = self._fetch_ticker_history(stock, period="1y")
 
             if hist_1y.empty or len(hist_1y) < 30:
                 logger.warning(f"Insufficient historical data for {ticker}")
@@ -1355,7 +1457,7 @@ class YFinanceProvider:
                         result["fundamentals"] = cached_data
                     else:
                         # Inline fundamentals fetching
-                        info = stock.info
+                        info = self._fetch_ticker_info(stock)
                         fundamentals = {
                             "ticker": ticker.upper(),
                             "company_name": info.get("longName") or info.get("shortName", ticker),

@@ -229,7 +229,7 @@ resource "google_cloud_run_v2_job" "regular_screeners_batch" {
 
     template {
       timeout         = "${var.job_timeout}s"
-      max_retries     = 1
+      max_retries     = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
       service_account = var.service_account_email
 
       containers {
@@ -321,7 +321,7 @@ resource "google_cloud_run_v2_job" "smart_money_screeners_batch" {
 
     template {
       timeout         = "${var.job_timeout}s"
-      max_retries     = 1
+      max_retries     = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
       service_account = var.service_account_email
 
       containers {
@@ -401,7 +401,7 @@ resource "google_cloud_scheduler_job" "trigger_regular_screeners_batch" {
   region           = var.scheduler_region  # Use scheduler-specific region (us-east1)
 
   retry_config {
-    retry_count = 1
+    retry_count = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
   }
 
   http_target {
@@ -434,7 +434,7 @@ resource "google_cloud_scheduler_job" "trigger_smart_money_screeners_batch" {
   region           = var.scheduler_region  # Use scheduler-specific region (us-east1)
 
   retry_config {
-    retry_count = 1
+    retry_count = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
   }
 
   http_target {
