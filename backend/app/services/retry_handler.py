@@ -46,14 +46,15 @@ def is_rate_limit_error(error: Exception) -> bool:
         False
     """
     error_msg = str(error).lower()
-    return any([
-        'rate limit' in error_msg,
-        'too many requests' in error_msg,
-        '429' in error_msg,
-        'throttle' in error_msg,
-        'throttled' in error_msg,
-        'exceed' in error_msg,
-    ])
+    rate_limit_indicators = [
+        'rate limit',
+        'too many requests',
+        '429',
+        'throttle',
+        'throttled',
+        'exceed',
+    ]
+    return any(indicator in error_msg for indicator in rate_limit_indicators)
 
 
 def is_retryable_error(error: Exception) -> bool:
