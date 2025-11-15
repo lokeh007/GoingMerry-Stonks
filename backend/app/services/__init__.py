@@ -8,7 +8,6 @@ To avoid circular imports and dependency issues, modules are not automatically i
 Import explicitly as needed:
     from app.services.market_data import MarketDataProvider
     from app.services.yfinance_provider import YFinanceProvider
-    from app.services.rate_limiter import TokenBucket
 """
 
 # No __all__ - use explicit imports as documented above

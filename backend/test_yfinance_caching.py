@@ -90,9 +90,16 @@ def test_cached_failure_scenario():
     class FailingMockTicker:
         """Mock that fails on first access."""
 
-        def __init__(self, fail_count: int):
+        def __init__(self, fail_count: int, initial_attempt: int = 0):
+            """
+            Initialize the mock ticker.
+
+            Args:
+                fail_count: Number of times to fail before succeeding
+                initial_attempt: Starting attempt number (for simulating global state)
+            """
             self.fail_count = fail_count
-            self.attempt = 0
+            self.attempt = initial_attempt
             self._info = None
 
         @property
@@ -132,14 +139,15 @@ def test_cached_failure_scenario():
     global_attempt = 0
     for retry in range(1, 4):
         try:
-            global_attempt += 1
             print(f"  Retry {retry}:")
-            ticker_new = FailingMockTicker(fail_count=2)  # NEW instance
-            ticker_new.attempt = global_attempt - 1  # Simulate global state
+            # Create new instance with current global attempt count
+            ticker_new = FailingMockTicker(fail_count=2, initial_attempt=global_attempt)
             info = ticker_new.info
+            global_attempt += 1
             print(f"    ✓ Success: {info}")
             break
         except Exception as e:
+            global_attempt += 1
             print(f"    ✗ Failed: {e}")
 
     print("\n  ✓ Solution: Each retry gets fresh ticker instance!")

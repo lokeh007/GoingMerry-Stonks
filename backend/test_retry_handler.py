@@ -6,6 +6,7 @@ This script verifies that the retry decorator works correctly with simulated
 rate limit errors using class-based test functions for better reusability.
 """
 
+import sys
 import time
 from app.services.retry_handler import adaptive_backoff_with_jitter, exponential_backoff_with_jitter
 
@@ -212,4 +213,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())
