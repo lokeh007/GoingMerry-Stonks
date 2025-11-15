@@ -5,7 +5,7 @@ This module provides market data and technical indicators using the yfinance lib
 Used for 15-minute delayed data that complements the Polygon.io real-time feed.
 
 Improvements:
-- Centralized token bucket rate limiting for burst handling
+- Exponential backoff with jitter for rate limit handling (no token bucket required)
 - Ticker object caching to reduce redundant API calls
 - Batch data fetching for efficient API usage
 """
@@ -19,7 +19,6 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-from .rate_limiter import TokenBucket
 from .retry_handler import adaptive_backoff_with_jitter
 
 logger = logging.getLogger(__name__)
@@ -36,20 +35,19 @@ class YFinanceProvider:
     - Stock universe fetching (NYSE + NASDAQ)
 
     Optimizations:
-    - Centralized token bucket rate limiting (60 req/min, burst=15)
+    - Exponential backoff with jitter for rate limit handling
     - Ticker object caching (5-minute TTL) to reduce API calls
     - Batch data fetching for multiple metrics at once
 
     Note: Data is 15-minute delayed (free tier)
     """
 
-    def __init__(self, rate_limit: int = 60, burst_capacity: int = 15):
+    def __init__(self):
         """
-        Initialize the YFinance provider with rate limiting and caching.
+        Initialize the YFinance provider with caching.
 
-        Args:
-            rate_limit: Maximum requests per minute (default: 60)
-            burst_capacity: Maximum burst size (default: 15)
+        Rate limiting is handled automatically by exponential backoff decorators
+        on all API call wrapper methods.
         """
         # Data cache (for results)
         self.cache: Dict[str, Any] = {}
@@ -61,17 +59,11 @@ class YFinanceProvider:
         self.ticker_cache_ttl = timedelta(minutes=5)  # Shorter TTL for ticker objects
         self.ticker_cache_lock = threading.Lock()  # Thread safety for ticker cache
 
-        # Centralized rate limiter (token bucket)
-        self.rate_limiter = TokenBucket(
-            rate=rate_limit,
-            capacity=burst_capacity,
-            time_unit=60.0  # per minute
-        )
-
         logger.info(
-            f"YFinanceProvider initialized: rate_limit={rate_limit}/min, "
-            f"burst={burst_capacity}, data_cache_ttl={self.cache_ttl.total_seconds()}s, "
-            f"ticker_cache_ttl={self.ticker_cache_ttl.total_seconds()}s"
+            f"YFinanceProvider initialized: "
+            f"data_cache_ttl={self.cache_ttl.total_seconds()}s, "
+            f"ticker_cache_ttl={self.ticker_cache_ttl.total_seconds()}s, "
+            f"rate_limiting=adaptive_backoff"
         )
 
     def _get_ticker(self, symbol: str) -> yf.Ticker:
@@ -207,25 +199,17 @@ class YFinanceProvider:
         else:
             return ticker.financials
 
-    def _acquire_rate_limit(self, tokens: int = 1) -> None:
-        """
-        Acquire tokens from the rate limiter before making API calls.
-
-        Args:
-            tokens: Number of tokens to acquire (default: 1)
-        """
-        self.rate_limiter.acquire(tokens=tokens)
-
     def get_technical_indicators(
-        self, ticker: str, period: str = "6mo", _skip_rate_limit: bool = False
+        self, ticker: str, period: str = "6mo"
     ) -> Dict[str, Any]:
         """
         Fetch technical indicators for a stock.
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Args:
             ticker: Stock ticker symbol
             period: Time period (1mo, 3mo, 6mo, 1y, 2y, 5y)
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing RSI, MACD, and other indicators
@@ -241,10 +225,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info(f"Fetching technical indicators for {ticker} ({period})")
-
-            # Acquire rate limit token (unless called from batch operation)
-            if not _skip_rate_limit:
-                self._acquire_rate_limit()
 
             # Fetch historical data using cached ticker
             stock = self._get_ticker(ticker)
@@ -301,16 +281,17 @@ class YFinanceProvider:
             raise ValueError(f"Failed to fetch indicators for {ticker}: {str(e)}")
 
     def get_historical_data(
-        self, ticker: str, period: str = "6mo", interval: str = "1d", _skip_rate_limit: bool = False
+        self, ticker: str, period: str = "6mo", interval: str = "1d"
     ) -> pd.DataFrame:
         """
         Fetch historical OHLCV data for pattern detection.
+
+        Rate limiting is handled automatically by exponential backoff with jitter.
 
         Args:
             ticker: Stock ticker symbol
             period: Time period (1mo, 3mo, 6mo, 1y, 2y, 5y)
             interval: Data interval (1d, 1wk, 1mo)
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             DataFrame with OHLCV data
@@ -326,10 +307,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info(f"Fetching historical data for {ticker} ({period}, {interval})")
-
-            # Acquire rate limit token (unless called from batch operation)
-            if not _skip_rate_limit:
-                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -349,7 +326,7 @@ class YFinanceProvider:
             logger.error(f"Error fetching historical data for {ticker}: {e}")
             raise ValueError(f"Failed to fetch historical data for {ticker}: {str(e)}")
 
-    def get_fundamentals(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
+    def get_fundamentals(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch fundamental data for a stock using yfinance.
 
@@ -367,9 +344,10 @@ class YFinanceProvider:
         - 52-week low/high
         - Company name and sector
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Args:
             ticker: Stock ticker symbol
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing fundamental metrics
@@ -390,10 +368,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info(f"Fetching fundamentals for {ticker}")
-
-            # Acquire rate limit token (unless called from batch operation)
-            if not _skip_rate_limit:
-                self._acquire_rate_limit()
 
             # Use cached ticker object (important: reuse for subsequent calls)
             stock = self._get_ticker(ticker)
@@ -624,6 +598,8 @@ class YFinanceProvider:
         """
         Fetch VIX (Volatility Index) data.
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Returns:
             Dict containing VIX value and market regime
 
@@ -638,9 +614,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info("Fetching VIX data")
-
-            # Acquire rate limit token
-            self._acquire_rate_limit()
 
             # Use cached ticker object
             vix = self._get_ticker("^VIX")
@@ -860,7 +833,7 @@ class YFinanceProvider:
         else:
             return False
 
-    def get_options_flow_metrics(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
+    def get_options_flow_metrics(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch options flow metrics for "Smart Money" screening.
 
@@ -872,9 +845,10 @@ class YFinanceProvider:
         - 30-day average option volume (estimated from recent expiries)
         - Unusual volume indicator
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Args:
             ticker: Stock ticker symbol
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing options flow metrics
@@ -913,13 +887,6 @@ class YFinanceProvider:
                     "timestamp": datetime.now().isoformat(),
                 }
 
-            # Acquire rate limit tokens based on actual expiries checked (up to 2)
-            # Note: Options data endpoint is more restrictive, so we check fewer expiries
-            # Changed from 3 to 2 expiries to reduce API calls per ticker (4 → 3 calls)
-            tokens_needed = min(2, len(expiries))
-            if not _skip_rate_limit:
-                self._acquire_rate_limit(tokens=tokens_needed)
-
             # Aggregate volume across all expiries (limit to first 2 for rate limiting)
             total_call_volume = 0
             total_put_volume = 0
@@ -940,7 +907,6 @@ class YFinanceProvider:
                         total_put_volume += put_vol
 
                     expiries_checked += 1
-                    # Note: Rate limiting handled by token bucket (5 tokens acquired upfront)
 
                 except Exception as e:
                     logger.debug(f"Error fetching option chain for {ticker} expiry {expiry}: {e}")
@@ -1012,7 +978,7 @@ class YFinanceProvider:
                 "timestamp": datetime.now().isoformat(),
             }
 
-    def get_analyst_and_insider_data(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
+    def get_analyst_and_insider_data(self, ticker: str) -> Dict[str, Any]:
         """
         Fetch analyst coverage and insider transaction data for "The Undiscovered" screening.
 
@@ -1021,9 +987,10 @@ class YFinanceProvider:
         - Insider transactions (net purchases/sales)
         - Insider buying activity
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Args:
             ticker: Stock ticker symbol
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing analyst and insider data
@@ -1037,10 +1004,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info(f"Fetching analyst and insider data for {ticker}")
-
-            # Acquire rate limit token (unless called from batch operation)
-            if not _skip_rate_limit:
-                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -1201,7 +1164,7 @@ class YFinanceProvider:
             "timestamp": datetime.now().isoformat(),
         }
 
-    def get_volatility_metrics(self, ticker: str, _skip_rate_limit: bool = False) -> Dict[str, Any]:
+    def get_volatility_metrics(self, ticker: str) -> Dict[str, Any]:
         """
         Get volatility metrics for The Coiled Spring screener.
 
@@ -1210,9 +1173,10 @@ class YFinanceProvider:
         - 30-day historical volatility
         - 1-year volatility percentile ranking
 
+        Rate limiting is handled automatically by exponential backoff with jitter.
+
         Args:
             ticker: Stock ticker symbol
-            _skip_rate_limit: Internal flag to skip rate limiting (used by batch operations)
 
         Returns:
             Dict containing volatility metrics and NR7 detection
@@ -1226,10 +1190,6 @@ class YFinanceProvider:
                 return cached_data
 
             logger.info(f"Fetching volatility metrics for {ticker}")
-
-            # Acquire rate limit token (unless called from batch operation)
-            if not _skip_rate_limit:
-                self._acquire_rate_limit()
 
             # Use cached ticker object
             stock = self._get_ticker(ticker)
@@ -1395,8 +1355,8 @@ class YFinanceProvider:
 
         This method is more efficient than calling individual methods because:
         1. Uses the same cached ticker object for all operations
-        2. Acquires rate limit tokens upfront for all operations
-        3. Reduces overhead from multiple function calls
+        2. Reduces overhead from multiple function calls
+        3. Rate limiting handled automatically by exponential backoff decorators
 
         Args:
             ticker: Stock ticker symbol
@@ -1428,23 +1388,6 @@ class YFinanceProvider:
             )
 
             result = {"ticker": ticker.upper(), "timestamp": datetime.now().isoformat()}
-
-            # Calculate total tokens needed
-            tokens_needed = 0
-            if include_fundamentals:
-                tokens_needed += 1
-            if include_technical:
-                tokens_needed += 1
-            if include_options_flow:
-                tokens_needed += 3  # Checks 3 expiries (conservative for rate limits)
-            if include_volatility:
-                tokens_needed += 1
-            if include_analyst_insider:
-                tokens_needed += 1
-
-            # Acquire all tokens upfront
-            if tokens_needed > 0:
-                self._acquire_rate_limit(tokens=tokens_needed)
 
             # Get or create cached ticker object (reused for all operations)
             stock = self._get_ticker(ticker)
@@ -1493,36 +1436,28 @@ class YFinanceProvider:
 
             if include_technical:
                 try:
-                    result["technical_indicators"] = self.get_technical_indicators(
-                        ticker, _skip_rate_limit=True
-                    )
+                    result["technical_indicators"] = self.get_technical_indicators(ticker)
                 except Exception as e:
                     logger.warning(f"Error fetching technical indicators in batch: {e}")
                     result["technical_indicators"] = {"error": str(e)}
 
             if include_options_flow:
                 try:
-                    result["options_flow"] = self.get_options_flow_metrics(
-                        ticker, _skip_rate_limit=True
-                    )
+                    result["options_flow"] = self.get_options_flow_metrics(ticker)
                 except Exception as e:
                     logger.warning(f"Error fetching options flow in batch: {e}")
                     result["options_flow"] = {"error": str(e)}
 
             if include_volatility:
                 try:
-                    result["volatility"] = self.get_volatility_metrics(
-                        ticker, _skip_rate_limit=True
-                    )
+                    result["volatility"] = self.get_volatility_metrics(ticker)
                 except Exception as e:
                     logger.warning(f"Error fetching volatility in batch: {e}")
                     result["volatility"] = {"error": str(e)}
 
             if include_analyst_insider:
                 try:
-                    result["analyst_insider"] = self.get_analyst_and_insider_data(
-                        ticker, _skip_rate_limit=True
-                    )
+                    result["analyst_insider"] = self.get_analyst_and_insider_data(ticker)
                 except Exception as e:
                     logger.warning(f"Error fetching analyst/insider data in batch: {e}")
                     result["analyst_insider"] = {"error": str(e)}
