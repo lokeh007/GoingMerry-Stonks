@@ -4,19 +4,19 @@
 # - 5 jobs for Regular Screeners (Undiscovered + Coiled Spring)
 # - 5 jobs for Smart Money Screener (Options Flow)
 #
-# Regular Screeners (60 req/min):
-# - Batch 1: 4:30 PM ET (A-D, ~1200 stocks) → finishes 6:00 PM
-# - Batch 2: 6:00 PM ET (E-J, ~1200 stocks) → finishes 7:30 PM
-# - Batch 3: 7:30 PM ET (K-N, ~1200 stocks) → finishes 9:00 PM
-# - Batch 4: 9:00 PM ET (O-S, ~1200 stocks) → finishes 10:30 PM
-# - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes 12:00 AM
+# Regular Screeners (50 req/min, ~2-3 API calls per ticker):
+# - Batch 1: 4:30 PM ET (A-D, ~1200 stocks) → finishes ~6:30 PM (~2 hours)
+# - Batch 2: 6:00 PM ET (E-J, ~1200 stocks) → finishes ~8:00 PM (~2 hours)
+# - Batch 3: 7:30 PM ET (K-N, ~1200 stocks) → finishes ~9:30 PM (~2 hours)
+# - Batch 4: 9:00 PM ET (O-S, ~1200 stocks) → finishes ~11:00 PM (~2 hours)
+# - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes ~12:30 AM (~2 hours)
 #
-# Smart Money Screeners (45 req/min):
-# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes 2:15 AM [15-min buffer]
-# - Batch 2: 2:00 AM ET (E-J, ~1200 stocks) → finishes 4:00 AM
-# - Batch 3: 4:00 AM ET (K-N, ~1200 stocks) → finishes 6:00 AM
-# - Batch 4: 6:00 AM ET (O-S, ~1200 stocks) → finishes 8:00 AM
-# - Batch 5: 8:00 AM ET (T-Z, ~1200 stocks) → finishes 10:00 AM
+# Smart Money Screeners (36 req/min, ~3 API calls per ticker: 2 option expiries + fundamentals):
+# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes ~2:15 AM (~2 hours) [15-min buffer]
+# - Batch 2: 2:30 AM ET (E-J, ~1200 stocks) → finishes ~4:30 AM (~2 hours)
+# - Batch 3: 5:00 AM ET (K-N, ~1200 stocks) → finishes ~7:00 AM (~2 hours)
+# - Batch 4: 7:30 AM ET (O-S, ~1200 stocks) → finishes ~9:30 AM (~2 hours)
+# - Batch 5: 10:00 AM ET (T-Z, ~1200 stocks) → finishes ~12:00 PM (~2 hours)
 
 terraform {
   required_version = ">= 1.0"
@@ -103,7 +103,7 @@ variable "smart_money_docker_image" {
 variable "regular_screeners_rate_limit" {
   description = "API requests per minute for regular screeners (Undiscovered + Coiled Spring)"
   type        = number
-  default     = 60
+  default     = 50  # Lowered from 60 to provide headroom for retry overhead
 
   validation {
     condition     = var.regular_screeners_rate_limit > 0 && var.regular_screeners_rate_limit <= 100
@@ -112,9 +112,9 @@ variable "regular_screeners_rate_limit" {
 }
 
 variable "smart_money_rate_limit" {
-  description = "API requests per minute for Smart Money screeners (Options Flow) - lower due to higher token consumption"
+  description = "API requests per minute for Smart Money screeners (Options Flow) - lower due to ~3 API calls per ticker (2 option expiries + 1 fundamentals)"
   type        = number
-  default     = 45
+  default     = 36  # Accounts for 3 API calls per ticker (36 req/min ÷ 3 = 12 tickers/min, ~100 min per 1200-stock batch)
 
   validation {
     condition     = var.smart_money_rate_limit > 0 && var.smart_money_rate_limit <= 100
@@ -164,8 +164,8 @@ locals {
   }
 
   # Define batch configurations for Smart Money Screener
-  # Staggered 2 hours apart, runs AFTER regular screeners complete
-  # Runs: Smart Money Options Flow only (45 req/min)
+  # Staggered 2.5 hours apart (15-min buffer), runs AFTER regular screeners complete
+  # Runs: Smart Money Options Flow only (36 req/min, ~3 API calls per ticker)
   # NOTE: Batch 1 starts at 12:15 AM (15-min buffer) to prevent overlap with regular batch 5
   smart_money_batches = {
     batch-1 = {
@@ -177,26 +177,26 @@ locals {
     batch-2 = {
       number      = 2
       description = "Smart Money screener - Batch 2 (E-J, ~1200 stocks)"
-      schedule    = "0 2 * * 2-6"    # 2:00 AM ET Tue-Sat
-      time_label  = "2:00 AM ET"
+      schedule    = "30 2 * * 2-6"    # 2:30 AM ET Tue-Sat (2h 15min after batch-1)
+      time_label  = "2:30 AM ET"
     }
     batch-3 = {
       number      = 3
       description = "Smart Money screener - Batch 3 (K-N, ~1200 stocks)"
-      schedule    = "0 4 * * 2-6"    # 4:00 AM ET Tue-Sat
-      time_label  = "4:00 AM ET"
+      schedule    = "0 5 * * 2-6"    # 5:00 AM ET Tue-Sat (2h 30min after batch-2)
+      time_label  = "5:00 AM ET"
     }
     batch-4 = {
       number      = 4
       description = "Smart Money screener - Batch 4 (O-S, ~1200 stocks)"
-      schedule    = "0 6 * * 2-6"    # 6:00 AM ET Tue-Sat
-      time_label  = "6:00 AM ET"
+      schedule    = "30 7 * * 2-6"    # 7:30 AM ET Tue-Sat (2h 30min after batch-3)
+      time_label  = "7:30 AM ET"
     }
     batch-5 = {
       number      = 5
       description = "Smart Money screener - Batch 5 (T-Z, ~1200 stocks)"
-      schedule    = "0 8 * * 2-6"    # 8:00 AM ET Tue-Sat
-      time_label  = "8:00 AM ET"
+      schedule    = "0 10 * * 2-6"    # 10:00 AM ET Tue-Sat (2h 30min after batch-4)
+      time_label  = "10:00 AM ET"
     }
   }
 }
