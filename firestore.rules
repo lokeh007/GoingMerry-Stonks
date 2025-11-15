@@ -4,13 +4,20 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Screener results: PUBLIC READ, SERVICE ACCOUNT WRITE
-    match /screeners/{screener}/runs/{date} {
-      // Allow anyone to read cached screener results
+    // Allow reading both the screener documents and querying the runs collection
+    match /screeners/{screener} {
+      // Allow reading screener metadata
       allow read: if true;
 
-      // Only allow Cloud Run Job service account to write
-      // (authenticated requests from backend service account)
-      allow write: if request.auth != null;
+      // Allow reading/querying individual run documents
+      match /runs/{date} {
+        // Allow anyone to read cached screener results
+        allow read: if true;
+
+        // Only allow Cloud Run Job service account to write
+        // (authenticated requests from backend service account)
+        allow write: if request.auth != null;
+      }
     }
 
     // Default: Deny all other access
