@@ -12,11 +12,11 @@
 # - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes ~12:30 AM (~2 hours)
 #
 # Smart Money Screeners (36 req/min, ~3 API calls per ticker: 2 option expiries + fundamentals):
-# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes ~2:15 AM (~2 hours) [15-min buffer]
-# - Batch 2: 2:30 AM ET (E-J, ~1200 stocks) → finishes ~4:30 AM (~2 hours)
-# - Batch 3: 5:00 AM ET (K-N, ~1200 stocks) → finishes ~7:00 AM (~2 hours)
-# - Batch 4: 7:30 AM ET (O-S, ~1200 stocks) → finishes ~9:30 AM (~2 hours)
-# - Batch 5: 10:00 AM ET (T-Z, ~1200 stocks) → finishes ~12:00 PM (~2 hours)
+# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes ~1:55 AM (~1h 40min) [15-min buffer]
+# - Batch 2: 2:30 AM ET (E-J, ~1200 stocks) → finishes ~4:10 AM (~1h 40min)
+# - Batch 3: 5:00 AM ET (K-N, ~1200 stocks) → finishes ~6:40 AM (~1h 40min)
+# - Batch 4: 7:30 AM ET (O-S, ~1200 stocks) → finishes ~9:10 AM (~1h 40min)
+# - Batch 5: 10:00 AM ET (T-Z, ~1200 stocks) → finishes ~11:40 AM (~1h 40min)
 
 terraform {
   required_version = ">= 1.0"
@@ -164,7 +164,7 @@ locals {
   }
 
   # Define batch configurations for Smart Money Screener
-  # Staggered 2.5 hours apart (15-min buffer), runs AFTER regular screeners complete
+  # Staggered 2h 15min (first interval), then 2h 30min apart (15-min buffer); runs AFTER regular screeners complete
   # Runs: Smart Money Options Flow only (36 req/min, ~3 API calls per ticker)
   # NOTE: Batch 1 starts at 12:15 AM (15-min buffer) to prevent overlap with regular batch 5
   smart_money_batches = {
@@ -295,7 +295,7 @@ resource "google_cloud_run_v2_job" "regular_screeners_batch" {
 
 # ============================================================================
 # CLOUD RUN JOBS - Smart Money Screener (5 Batches)
-# Options Flow @ 45 req/min
+# Options Flow @ 36 req/min
 # ============================================================================
 
 resource "google_cloud_run_v2_job" "smart_money_screeners_batch" {
