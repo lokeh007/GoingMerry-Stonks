@@ -3,7 +3,7 @@
 # Firestore Rules Deployment Script
 # This script deploys environment-specific Firestore security rules
 
-set -e  # Exit on error
+set -euo pipefail  # Exit on error, unset variables are errors, fail on pipeline errors
 
 # Colors for output
 RED='\033[0;31m'
@@ -25,7 +25,7 @@ print_error() {
 }
 
 # Check if environment argument is provided
-if [ -z "$1" ]; then
+if [ -z "${1:-}" ]; then
     print_error "Environment not specified!"
     echo ""
     echo "Usage: ./scripts/deploy-firestore-rules.sh <environment>"
@@ -39,7 +39,7 @@ if [ -z "$1" ]; then
     exit 1
 fi
 
-ENVIRONMENT=$1
+ENVIRONMENT="${1}"
 
 # Determine which rules file to use
 case $ENVIRONMENT in
@@ -105,11 +105,7 @@ fi
 print_info "Deploying rules to Firebase..."
 firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT"
 
-if [ $? -eq 0 ]; then
-    print_info "✓ Firestore rules deployed successfully!"
-    print_info "Environment: $ENVIRONMENT"
-    print_info "Project: $FIREBASE_PROJECT"
-else
-    print_error "Deployment failed!"
-    exit 1
-fi
+# If we reach here, deployment succeeded (set -e would have exited on failure)
+print_info "✓ Firestore rules deployed successfully!"
+print_info "Environment: $ENVIRONMENT"
+print_info "Project: $FIREBASE_PROJECT"
