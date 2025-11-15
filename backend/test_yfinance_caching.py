@@ -138,16 +138,15 @@ def test_cached_failure_scenario():
 
     global_attempt = 0
     for retry in range(1, 4):
+        global_attempt += 1  # Increment once per iteration
         try:
             print(f"  Retry {retry}:")
             # Create new instance with current global attempt count
-            ticker_new = FailingMockTicker(fail_count=2, initial_attempt=global_attempt)
+            ticker_new = FailingMockTicker(fail_count=2, initial_attempt=global_attempt - 1)
             info = ticker_new.info
-            global_attempt += 1
             print(f"    ✓ Success: {info}")
             break
         except Exception as e:
-            global_attempt += 1
             print(f"    ✗ Failed: {e}")
 
     print("\n  ✓ Solution: Each retry gets fresh ticker instance!")
