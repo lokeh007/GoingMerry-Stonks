@@ -13,15 +13,15 @@ NC='\033[0m' # No Color
 
 # Function to print colored output
 print_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    echo -e "${GREEN}[INFO]${NC} ${1}"
 }
 
 print_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    echo -e "${YELLOW}[WARN]${NC} ${1}"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[ERROR]${NC} ${1}"
 }
 
 # Check if environment argument is provided
@@ -42,7 +42,7 @@ fi
 ENVIRONMENT="${1}"
 
 # Determine which rules file to use
-case $ENVIRONMENT in
+case "${ENVIRONMENT}" in
     dev|development)
         RULES_FILE="firestore/firestore.rules.dev"
         FIREBASE_PROJECT="[UPDATE_WITH_DEV_PROJECT_ID]"
@@ -60,26 +60,26 @@ case $ENVIRONMENT in
         FIREBASE_PROJECT="goingmerry-stonks"
         ;;
     *)
-        print_error "Invalid environment: $ENVIRONMENT"
+        print_error "Invalid environment: ${ENVIRONMENT}"
         echo "Valid options: dev, staging, prod"
         exit 1
         ;;
 esac
 
 # Verify rules file exists
-if [ ! -f "$RULES_FILE" ]; then
-    print_error "Rules file not found: $RULES_FILE"
+if [ ! -f "${RULES_FILE}" ]; then
+    print_error "Rules file not found: ${RULES_FILE}"
     exit 1
 fi
 
-print_info "Deploying Firestore rules for environment: $ENVIRONMENT"
-print_info "Rules file: $RULES_FILE"
-print_info "Firebase project: $FIREBASE_PROJECT"
+print_info "Deploying Firestore rules for environment: ${ENVIRONMENT}"
+print_info "Rules file: ${RULES_FILE}"
+print_info "Firebase project: ${FIREBASE_PROJECT}"
 echo ""
 
 # Copy rules file to root (required by firebase.json)
-print_info "Copying $RULES_FILE to firestore.rules..."
-cp "$RULES_FILE" firestore.rules
+print_info "Copying ${RULES_FILE} to firestore.rules..."
+cp "${RULES_FILE}" firestore.rules
 
 # Show diff if git is available
 if command -v git &> /dev/null; then
@@ -93,19 +93,19 @@ fi
 
 # Confirm deployment
 echo ""
-read -p "Deploy these rules to $FIREBASE_PROJECT? (y/N): " -n 1 -r
+read -p "Deploy these rules to ${FIREBASE_PROJECT}? (y/N): " -n 1 -r
 echo ""
 
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+if [[ ! "${REPLY}" =~ ^[Yy]$ ]]; then
     print_warn "Deployment cancelled"
     exit 0
 fi
 
 # Deploy rules
 print_info "Deploying rules to Firebase..."
-firebase deploy --only firestore:rules --project "$FIREBASE_PROJECT"
+firebase deploy --only firestore:rules --project "${FIREBASE_PROJECT}"
 
-# If we reach here, deployment succeeded (set -e would have exited on failure)
+# If we reach here, deployment succeeded (with set -euo pipefail, the script exits automatically on deployment failure)
 print_info "✓ Firestore rules deployed successfully!"
-print_info "Environment: $ENVIRONMENT"
-print_info "Project: $FIREBASE_PROJECT"
+print_info "Environment: ${ENVIRONMENT}"
+print_info "Project: ${FIREBASE_PROJECT}"
