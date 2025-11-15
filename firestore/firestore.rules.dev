@@ -16,14 +16,14 @@ service cloud.firestore {
 
         // Only allow write access from the backend service account
         // Used by: Backend API (Cloud Run service) + Batch Screeners (Cloud Run jobs)
-        // Environment: PRODUCTION
-        // Project: sylvan-earth-477020-u6
-        // Service Account: prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com
+        // Environment: DEVELOPMENT
+        // Project: [UPDATE WITH DEV PROJECT ID]
+        // Service Account: [UPDATE WITH DEV SERVICE ACCOUNT EMAIL]
         //
-        // NOTE: This file is auto-generated from firestore/firestore.rules.prod
-        // To update: Edit firestore/firestore.rules.prod and copy to root
+        // NOTE: For local development, you may want to relax this rule:
+        // allow write: if request.auth != null;
         allow write: if request.auth != null &&
-                     request.auth.token.email == 'prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com';
+                     request.auth.token.email == 'dev-backend-sa@[DEV_PROJECT_ID].iam.gserviceaccount.com';
       }
     }
 

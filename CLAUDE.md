@@ -649,6 +649,7 @@ gcloud monitoring time-series list \
 - ✅ **HTTPS Enforcement**: HTTP → HTTPS redirect
 - ✅ **Container Scanning**: Automated vulnerability scanning in Artifact Registry
 - ✅ **Audit Logging**: All API calls and admin actions logged
+- ✅ **Firestore Security Rules**: Environment-specific rules with service account restrictions
 
 ### Security Best Practices
 
@@ -667,6 +668,34 @@ gcloud monitoring time-series list \
 4. **Regular updates**:
    - Keep dependencies updated (`pip list --outdated`, `npm outdated`)
    - Monitor security advisories (Dependabot, Snyk)
+
+### Firestore Security Rules
+
+Firestore security rules are environment-specific to prevent hardcoding and improve security:
+
+**Structure**:
+- `firestore/firestore.rules.template` - Template with placeholders
+- `firestore/firestore.rules.prod` - Production rules (sylvan-earth-477020-u6)
+- `firestore/firestore.rules.dev` - Development rules (update with dev project)
+- `firestore.rules` - Active rules (copied from environment-specific file)
+
+**Deployment**:
+```bash
+# Using deployment script (recommended)
+./scripts/deploy-firestore-rules.sh prod
+
+# Manual deployment
+cp firestore/firestore.rules.prod firestore.rules
+firebase deploy --only firestore:rules --project goingmerry-stonks
+```
+
+**Security Model**:
+- ✅ **Public Read**: Anyone can read screener results (fast frontend loading)
+- ✅ **Service Account Write**: Only `prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com` can write
+- ✅ **Environment Separation**: Each environment has its own service account
+- ✅ **Default Deny**: All other access is denied by default
+
+See `firestore/README.md` for detailed documentation.
 
 ---
 

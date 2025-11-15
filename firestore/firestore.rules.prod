@@ -19,9 +19,6 @@ service cloud.firestore {
         // Environment: PRODUCTION
         // Project: sylvan-earth-477020-u6
         // Service Account: prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com
-        //
-        // NOTE: This file is auto-generated from firestore/firestore.rules.prod
-        // To update: Edit firestore/firestore.rules.prod and copy to root
         allow write: if request.auth != null &&
                      request.auth.token.email == 'prod-backend-sa@sylvan-earth-477020-u6.iam.gserviceaccount.com';
       }
