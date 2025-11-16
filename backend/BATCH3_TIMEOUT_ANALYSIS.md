@@ -156,7 +156,7 @@ Encountered multiple delisted tickers that caused:
 - Previous batch 3 run: 9 tickers (MMTX, MNZLY, MOVAA, MPJS, MRCA, MREGY, MROSY, MRUWY, LOMWF)
 - This batch 3 run: 9 additional tickers (now added to exclusion list)
 - Batch 2: 1 ticker (JMAKY, also excluded)
-- **Total**: 19 delisted tickers = ~57 wasted API calls = ~12 minutes lost
+- **Total**: 19 delisted tickers = ~57 wasted API calls = ~1 minute lost
 
 #### 3. **Lock Contention**
 With 6 workers competing for tokens:
@@ -332,7 +332,7 @@ def _get_delisted_ticker_list(self) -> Set[str]:
 
 1. **`backend/app/services/ticker_universe.py`**
    - Added `_get_delisted_ticker_list()` method
-   - Added 18 Batch 3 delisted tickers (plus JMAKY from Batch 2) to permanent exclusion list
+   - Added 19 delisted tickers (9 from previous batch 3 + 9 from this batch 3 + 1 JMAKY from Batch 2) to permanent exclusion list
    - Updated `_apply_basic_filters()` to check delisted list
 
 2. **`backend/jobs/add_batch3_additional_delisted.py`** (NEW)
