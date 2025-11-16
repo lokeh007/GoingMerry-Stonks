@@ -1,0 +1,55 @@
+# Dockerfile for Smart Money (Options Flow) Screeners Cloud Run Job
+# Runs batch processing job to screen options flow and cache results in Firestore
+
+# ========================================
+# Stage 1: Builder
+# ========================================
+FROM python:3.11-slim as builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ========================================
+# Stage 2: Runtime
+# ========================================
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
+
+# Create non-root user
+RUN groupadd -r jobuser && useradd -r -g jobuser jobuser
+
+WORKDIR /app
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application code and jobs
+COPY --chown=jobuser:jobuser app ./app
+COPY --chown=jobuser:jobuser jobs ./jobs
+
+# Switch to non-root user
+USER jobuser
+
+# Run the smart money screeners job
+CMD ["python3", "jobs/run_smart_money_screener.py"]
+
+# Build metadata
+LABEL maintainer="GoingMerry-Stonks Team"
+LABEL version="1.0.0"
+LABEL description="Smart Money (options flow) screeners batch job for Firestore caching"

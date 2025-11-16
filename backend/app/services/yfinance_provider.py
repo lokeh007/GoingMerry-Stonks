@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 
 from .retry_handler import adaptive_backoff_with_jitter
+from .rate_limiter import TokenBucket
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,16 @@ class YFinanceProvider:
     Note: Data is 15-minute delayed (free tier)
     """
 
-    def __init__(self):
+    def __init__(self, max_requests_per_minute: int = 50):
         """
-        Initialize the YFinance provider with caching.
+        Initialize the YFinance provider with caching and rate limiting.
 
-        Rate limiting is handled automatically by exponential backoff decorators
-        on all API call wrapper methods.
+        Rate limiting uses a two-layer strategy:
+        1. PROACTIVE: Token bucket at 50 req/min to prevent hitting limits
+        2. REACTIVE: Exponential backoff with jitter as safety net
+
+        Args:
+            max_requests_per_minute: Target request rate (default: 50, yfinance limit is 60)
         """
         # Data cache (for results)
         self.cache: Dict[str, Any] = {}
@@ -59,11 +64,19 @@ class YFinanceProvider:
         self.ticker_cache_ttl = timedelta(minutes=5)  # Shorter TTL for ticker objects
         self.ticker_cache_lock = threading.Lock()  # Thread safety for ticker cache
 
+        # Proactive rate limiter (token bucket)
+        # Set capacity equal to rate for smooth request distribution
+        self.rate_limiter = TokenBucket(
+            rate=max_requests_per_minute,
+            capacity=max_requests_per_minute,
+            time_unit=60.0  # 60 seconds = 1 minute
+        )
+
         logger.info(
             f"YFinanceProvider initialized: "
             f"data_cache_ttl={self.cache_ttl.total_seconds()}s, "
             f"ticker_cache_ttl={self.ticker_cache_ttl.total_seconds()}s, "
-            f"rate_limiting=adaptive_backoff"
+            f"rate_limiting=proactive_token_bucket({max_requests_per_minute} req/min) + reactive_backoff"
         )
 
     def _get_ticker(self, symbol: str) -> yf.Ticker:
@@ -101,10 +114,11 @@ class YFinanceProvider:
     @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
     def _fetch_ticker_info(self, ticker: yf.Ticker) -> dict:
         """
-        Fetch ticker.info with retry logic.
+        Fetch ticker.info with proactive rate limiting and retry logic.
 
-        Wrapper around yfinance Ticker.info that implements exponential backoff
-        with jitter for rate limit handling.
+        Two-layer rate limiting:
+        1. PROACTIVE: Acquires token from bucket (waits if rate limit approached)
+        2. REACTIVE: Exponential backoff with jitter (if rate limit still hit)
 
         Args:
             ticker: yfinance Ticker object
@@ -115,15 +129,18 @@ class YFinanceProvider:
         Raises:
             Exception: If all retries are exhausted
         """
+        # Proactive rate limiting: acquire token before making request
+        self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.info
 
     @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
     def _fetch_ticker_history(self, ticker: yf.Ticker, **kwargs) -> pd.DataFrame:
         """
-        Fetch ticker.history with retry logic.
+        Fetch ticker.history with proactive rate limiting and retry logic.
 
-        Wrapper around yfinance Ticker.history that implements exponential backoff
-        with jitter for rate limit handling.
+        Two-layer rate limiting:
+        1. PROACTIVE: Acquires token from bucket (waits if rate limit approached)
+        2. REACTIVE: Exponential backoff with jitter (if rate limit still hit)
 
         Args:
             ticker: yfinance Ticker object
@@ -135,15 +152,18 @@ class YFinanceProvider:
         Raises:
             Exception: If all retries are exhausted
         """
+        # Proactive rate limiting: acquire token before making request
+        self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.history(**kwargs)
 
     @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
     def _fetch_option_chain(self, ticker: yf.Ticker, expiry: str):
         """
-        Fetch ticker.option_chain with retry logic.
+        Fetch ticker.option_chain with proactive rate limiting and retry logic.
 
-        Wrapper around yfinance Ticker.option_chain that implements exponential backoff
-        with jitter for rate limit handling.
+        Two-layer rate limiting:
+        1. PROACTIVE: Acquires token from bucket (waits if rate limit approached)
+        2. REACTIVE: Exponential backoff with jitter (if rate limit still hit)
 
         Args:
             ticker: yfinance Ticker object
@@ -155,15 +175,18 @@ class YFinanceProvider:
         Raises:
             Exception: If all retries are exhausted
         """
+        # Proactive rate limiting: acquire token before making request
+        self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.option_chain(expiry)
 
     @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
     def _fetch_insider_transactions(self, ticker: yf.Ticker) -> pd.DataFrame:
         """
-        Fetch ticker.insider_transactions with retry logic.
+        Fetch ticker.insider_transactions with proactive rate limiting and retry logic.
 
-        Wrapper around yfinance Ticker.insider_transactions that implements exponential backoff
-        with jitter for rate limit handling.
+        Two-layer rate limiting:
+        1. PROACTIVE: Acquires token from bucket (waits if rate limit approached)
+        2. REACTIVE: Exponential backoff with jitter (if rate limit still hit)
 
         Args:
             ticker: yfinance Ticker object
@@ -174,15 +197,18 @@ class YFinanceProvider:
         Raises:
             Exception: If all retries are exhausted
         """
+        # Proactive rate limiting: acquire token before making request
+        self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.insider_transactions
 
     @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
     def _fetch_ticker_financials(self, ticker: yf.Ticker, quarterly: bool = False):
         """
-        Fetch ticker financials with retry logic.
+        Fetch ticker financials with proactive rate limiting and retry logic.
 
-        Wrapper around yfinance Ticker.financials/quarterly_financials that implements
-        exponential backoff with jitter for rate limit handling.
+        Two-layer rate limiting:
+        1. PROACTIVE: Acquires token from bucket (waits if rate limit approached)
+        2. REACTIVE: Exponential backoff with jitter (if rate limit still hit)
 
         Args:
             ticker: yfinance Ticker object
@@ -194,6 +220,8 @@ class YFinanceProvider:
         Raises:
             Exception: If all retries are exhausted
         """
+        # Proactive rate limiting: acquire token before making request
+        self.rate_limiter.acquire(tokens=1, blocking=True)
         if quarterly:
             return ticker.quarterly_financials
         else:

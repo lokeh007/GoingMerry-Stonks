@@ -80,23 +80,15 @@ class DailyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # Read rate limit from environment variable (default: 60 req/min)
-        try:
-            rate_limit = int(os.getenv('RATE_LIMIT_PER_MINUTE', '60'))
-            if rate_limit <= 0 or rate_limit > 100:
-                logger.warning(f"Invalid rate limit {rate_limit}, using default 60")
-                rate_limit = 60
-        except ValueError:
-            logger.warning("Invalid RATE_LIMIT_PER_MINUTE value, using default 60")
-            rate_limit = 60
-        self.yf_provider = YFinanceProvider(rate_limit=rate_limit, burst_capacity=15)
+        # YFinanceProvider now uses adaptive exponential backoff (no rate limit config needed)
+        self.yf_provider = YFinanceProvider()
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
         if batch_number:
             logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
-            logger.info(f"Rate limit: {rate_limit} requests/minute")
+            logger.info("Rate limiting: Adaptive exponential backoff with jitter")
 
     def _categorize_error(
         self,
@@ -691,7 +683,7 @@ class DailyScreenerJob:
         logger.info("REGULAR STOCK SCREENERS - Starting execution")
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
-        logger.info(f"Rate limit: 60 requests/minute")
+        logger.info("Rate limiting: Adaptive exponential backoff with jitter")
         logger.info("=" * 80)
 
         try:

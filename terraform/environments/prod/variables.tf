@@ -72,6 +72,20 @@ variable "backend_memory_limit" {
 }
 
 # ========================================
+# Screener Jobs Configuration
+# ========================================
+
+variable "docker_image" {
+  description = "Full Docker image path for regular screener jobs (Undiscovered + Coiled Spring)"
+  type        = string
+}
+
+variable "smart_money_docker_image" {
+  description = "Full Docker image path for Smart Money screener jobs (Options Flow)"
+  type        = string
+}
+
+# ========================================
 # Database Configuration
 # ========================================
 

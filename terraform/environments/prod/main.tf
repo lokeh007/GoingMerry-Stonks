@@ -166,6 +166,10 @@ module "scheduled_jobs" {
   polygon_api_key_secret = module.secrets.polygon_api_key_secret_id
   service_account_email  = module.backend.service_account_email
 
+  # Docker images for screener jobs (use versioned tags from terraform.tfvars)
+  docker_image             = var.docker_image
+  smart_money_docker_image = var.smart_money_docker_image
+
   # Schedule: 6:30 PM ET Monday-Friday (after market close)
   job_schedule = "30 23 * * 1-5"  # 23:30 UTC = 6:30 PM ET
 
