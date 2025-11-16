@@ -56,7 +56,7 @@ class YFinanceProvider:
         """
         # Data cache (for results)
         self.cache: Dict[str, Any] = {}
-        self.cache_ttl = timedelta(minutes=15)  # Match data delay
+        self.cache_ttl = timedelta(minutes=60)  # Extended for batch screening (fundamentals change slowly)
         self.cache_lock = threading.Lock()  # Thread safety for cache
 
         # Ticker object cache (for yf.Ticker instances)

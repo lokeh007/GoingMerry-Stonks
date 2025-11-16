@@ -80,15 +80,23 @@ class SmartMoneyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # YFinanceProvider now uses adaptive exponential backoff (no rate limit config needed)
-        self.yf_provider = YFinanceProvider()
+        # YFinanceProvider with increased rate limit (50 req/min for options flow - uses 3 calls per ticker)
+        self.yf_provider = YFinanceProvider(max_requests_per_minute=50)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
+        # Metrics tracking
+        self.metrics = {
+            'api_calls': 0,
+            'cache_hits': 0,
+            'start_time': None,
+            'wait_time': 0.0
+        }
+
         if batch_number:
             logger.info(f"Initializing Smart Money Screener Job - Batch {batch_number}/5")
-            logger.info("Rate limiting: Adaptive exponential backoff with jitter")
+            logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (3 calls/ticker)")
 
     def _categorize_error(
         self,
@@ -220,6 +228,8 @@ class SmartMoneyScreenerJob:
         logger.info("=" * 80)
 
         start_time = datetime.now()
+        self.metrics['start_time'] = start_time
+        screener_api_calls = 0
         results = []
         failed_tickers = []
         not_found_tickers = []  # Track 404s separately
@@ -236,8 +246,9 @@ class SmartMoneyScreenerJob:
                 self._log_progress(i, len(universe), start_time)
 
             try:
-                # Get options flow metrics
+                # Get options flow metrics (3 API calls: options data, volume history, fundamentals)
                 options_flow = self.yf_provider.get_options_flow_metrics(ticker)
+                screener_api_calls += 3  # Options flow uses 3 calls per ticker
 
                 # Check for API errors (timeout, rate limit, etc.)
                 if options_flow.get("error") is not None:
@@ -260,7 +271,7 @@ class SmartMoneyScreenerJob:
                 if avg_vol > 0 and total_vol < (avg_vol * unusual_volume_multiplier):
                     continue
 
-                # Get fundamentals for display
+                # Get fundamentals for display (already called in options_flow, using cache)
                 fundamentals = self.yf_provider.get_fundamentals(ticker)
 
                 # Calculate score (0-100)
@@ -292,6 +303,11 @@ class SmartMoneyScreenerJob:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         execution_time = (datetime.now() - start_time).total_seconds()
+        self.metrics['api_calls'] += screener_api_calls
+
+        # Calculate metrics
+        actual_rate = (screener_api_calls / execution_time * 60) if execution_time > 0 else 0
+        rate_utilization = (actual_rate / 50 * 100) if actual_rate > 0 else 0
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
@@ -300,6 +316,12 @@ class SmartMoneyScreenerJob:
             logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
                        (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
+        logger.info("")
+        logger.info("📊 Metrics Summary:")
+        logger.info(f"  - API Calls: {screener_api_calls} (3 calls/ticker)")
+        logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
+        logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
+        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
 
         return {
             "screener_name": "The Smart Money",
@@ -312,7 +334,7 @@ class SmartMoneyScreenerJob:
             "parameters": {
                 "min_call_to_put_ratio": min_call_to_put_ratio,
                 "unusual_volume_multiplier": unusual_volume_multiplier,
-                "rate_limit": 45,  # Document the rate limit used
+                "rate_limit": 50,  # Document the rate limit used
             },
             "timestamp": self.run_timestamp.isoformat(),
         }
@@ -416,12 +438,17 @@ class SmartMoneyScreenerJob:
         logger.info("=" * 80)
         logger.info("SMART MONEY SCREENER (OPTIONS FLOW) - Starting execution")
         logger.info(f"Timestamp: {self.run_timestamp}")
-        logger.info("Rate limiting: Adaptive exponential backoff with jitter")
+        logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (3 calls/ticker)")
         logger.info("=" * 80)
 
         try:
-            # Get stock universe
+            # Get stock universe (measure initialization time)
+            logger.info("Step 1: Fetching stock universe...")
+            universe_start = datetime.now()
             universe = self.get_full_exchange_universe()
+            universe_elapsed = (datetime.now() - universe_start).total_seconds()
+            logger.info(f"✓ Universe loaded in {universe_elapsed:.1f}s ({len(universe)} stocks)")
+            logger.info("")
 
             # Run Smart Money screener only
             try:
@@ -440,9 +467,20 @@ class SmartMoneyScreenerJob:
             total_minutes = int(total_execution_time // 60)
             total_seconds = int(total_execution_time % 60)
 
+            # Calculate overall metrics
+            total_api_calls = self.metrics['api_calls']
+            overall_rate = (total_api_calls / total_execution_time * 60) if total_execution_time > 0 else 0
+            overall_utilization = (overall_rate / 50 * 100) if overall_rate > 0 else 0
+
             logger.info("=" * 80)
             logger.info("SMART MONEY SCREENER (OPTIONS FLOW) - Completed successfully")
             logger.info(f"⏱  Total execution time: {total_minutes}m {total_seconds}s ({total_execution_time:.1f} seconds)")
+            logger.info("")
+            logger.info("📊 Overall Job Metrics:")
+            logger.info(f"  - Total API Calls: {total_api_calls}")
+            logger.info(f"  - Overall Rate: {overall_rate:.2f} calls/min")
+            logger.info(f"  - Rate Limit Utilization: {overall_utilization:.1f}%")
+            logger.info(f"  - Total Tickers Processed: {len(universe)}")
             logger.info("=" * 80)
 
             return {"status": "success", "timestamp": self.run_timestamp.isoformat()}
