@@ -25,8 +25,9 @@ import sys
 import logging
 import re
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -235,6 +236,174 @@ class DailyScreenerJob:
         logger.warning("Production deployment should use full NYSE/NASDAQ API")
 
         return universe
+
+    def _process_ticker(
+        self,
+        ticker: str,
+        undiscovered_params: Dict[str, Any],
+        coiled_spring_params: Dict[str, Any]
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], int]:
+        """
+        Process a single ticker through both screeners with shared data.
+
+        This method fetches fundamental data ONCE and reuses it for both screeners,
+        eliminating redundant API calls.
+
+        Args:
+            ticker: Stock ticker symbol
+            undiscovered_params: Parameters for Undiscovered screener
+            coiled_spring_params: Parameters for Coiled Spring screener
+
+        Returns:
+            Tuple of (undiscovered_result, coiled_spring_result, api_call_count)
+            Results are None if ticker doesn't pass the screener
+        """
+        api_calls = 0
+
+        try:
+            # Fetch shared fundamental data (used by both screeners)
+            fundamentals = self.yf_provider.get_fundamentals(ticker)
+            api_calls += 1
+
+            # Evaluate for Undiscovered screener
+            undiscovered_result = None
+            try:
+                analyst_data = self.yf_provider.get_analyst_and_insider_data(ticker)
+                api_calls += 1
+                undiscovered_result = self._evaluate_undiscovered(
+                    ticker, fundamentals, analyst_data, undiscovered_params
+                )
+            except Exception as e:
+                logger.debug(f"Undiscovered evaluation failed for {ticker}: {e}")
+
+            # Evaluate for Coiled Spring screener (reuses fundamentals!)
+            coiled_spring_result = None
+            try:
+                volatility = self.yf_provider.get_volatility_metrics(ticker)
+                api_calls += 1
+                coiled_spring_result = self._evaluate_coiled_spring(
+                    ticker, fundamentals, volatility, coiled_spring_params
+                )
+            except Exception as e:
+                logger.debug(f"Coiled Spring evaluation failed for {ticker}: {e}")
+
+            return undiscovered_result, coiled_spring_result, api_calls
+
+        except Exception as e:
+            # If fundamentals fail, both screeners fail
+            logger.debug(f"Fundamentals fetch failed for {ticker}: {e}")
+            return None, None, api_calls
+
+    def _evaluate_undiscovered(
+        self,
+        ticker: str,
+        fundamentals: Dict[str, Any],
+        analyst_data: Dict[str, Any],
+        params: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate a ticker against Undiscovered screener criteria.
+
+        Args:
+            ticker: Stock ticker symbol
+            fundamentals: Pre-fetched fundamental data
+            analyst_data: Pre-fetched analyst and insider data
+            params: Screener parameters
+
+        Returns:
+            Result dict if ticker passes, None otherwise
+        """
+        # Extract parameters
+        max_institutional_ownership = params["max_institutional_ownership"]
+        max_analyst_coverage = params["max_analyst_coverage"]
+        require_insider_buying = params["require_insider_buying"]
+
+        # Apply filters
+        inst_ownership = fundamentals.get("institutional_ownership", 100)
+        analyst_count = analyst_data.get("analyst_count", 100)
+        has_insider_buying = analyst_data.get("has_recent_insider_buying", False)
+
+        # Check if passes screen
+        if inst_ownership > max_institutional_ownership:
+            return None
+        if analyst_count > max_analyst_coverage:
+            return None
+        if require_insider_buying and not has_insider_buying:
+            return None
+
+        # Calculate score (0-100)
+        score = self._calculate_undiscovered_score(
+            inst_ownership, analyst_count, has_insider_buying, fundamentals
+        )
+
+        # Create result
+        return {
+            "ticker": ticker.upper(),
+            "company_name": fundamentals.get("company_name", ticker),
+            "sector": fundamentals.get("sector", "Unknown"),
+            "current_price": fundamentals.get("current_price"),
+            "market_cap": fundamentals.get("market_cap"),
+            "score": round(score, 1),
+            "institutional_ownership": inst_ownership,
+            "analyst_count": analyst_count,
+            "has_insider_buying": has_insider_buying,
+            "peg_ratio": fundamentals.get("peg_ratio"),
+            "eps_growth": fundamentals.get("eps_growth"),
+        }
+
+    def _evaluate_coiled_spring(
+        self,
+        ticker: str,
+        fundamentals: Dict[str, Any],
+        volatility: Dict[str, Any],
+        params: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate a ticker against Coiled Spring screener criteria.
+
+        Args:
+            ticker: Stock ticker symbol
+            fundamentals: Pre-fetched fundamental data
+            volatility: Pre-fetched volatility metrics
+            params: Screener parameters
+
+        Returns:
+            Result dict if ticker passes, None otherwise
+        """
+        # Extract parameters
+        max_volatility_30d = params["max_volatility_30d"]
+        require_nr7 = params["require_nr7"]
+        min_percentile_rank = params["min_percentile_rank"]
+
+        # Apply filters
+        has_nr7 = volatility.get("has_nr7", False)
+        volatility_30d = volatility.get("volatility_30d")
+        volatility_percentile = volatility.get("volatility_percentile")
+
+        # Filter checks
+        if require_nr7 and not has_nr7:
+            return None
+        if volatility_30d is None or volatility_30d > max_volatility_30d:
+            return None
+        if volatility_percentile is not None and volatility_percentile > min_percentile_rank:
+            return None
+
+        # Get consolidation score
+        consolidation_score = volatility.get("consolidation_score", 0)
+
+        # Create result
+        return {
+            "ticker": ticker.upper(),
+            "company_name": fundamentals.get("company_name", ticker),
+            "sector": fundamentals.get("sector", "Unknown"),
+            "current_price": fundamentals.get("current_price"),
+            "market_cap": fundamentals.get("market_cap"),
+            "score": round(consolidation_score, 1),
+            "has_nr7": has_nr7,
+            "volatility_30d": round(volatility_30d, 2) if volatility_30d else None,
+            "volatility_percentile": round(volatility_percentile, 1) if volatility_percentile else None,
+            "current_range": volatility.get("current_range"),
+        }
 
     def run_undiscovered_screener(self, universe: List[str]) -> Dict[str, Any]:
         """
@@ -711,7 +880,14 @@ class DailyScreenerJob:
         return round(score, 1)
 
     def run(self):
-        """Main execution method."""
+        """
+        Main execution method with parallel processing and shared data optimization.
+
+        This method processes both screeners simultaneously with:
+        - Shared fundamental data (fetched once per ticker)
+        - Parallel processing (3 concurrent workers)
+        - Conservative rate limiting (55 req/min via token bucket)
+        """
         job_start_time = datetime.now()
 
         logger.info("=" * 80)
@@ -719,6 +895,7 @@ class DailyScreenerJob:
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
         logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
+        logger.info("Parallel processing: 3 concurrent workers (shared data optimization)")
         logger.info("=" * 80)
 
         try:
@@ -730,35 +907,137 @@ class DailyScreenerJob:
             logger.info(f"✓ Universe loaded in {universe_elapsed:.1f}s ({len(universe)} stocks)")
             logger.info("")
 
-            # Run regular screeners only (Smart Money runs separately)
-            screeners = [
-                ("undiscovered", self.run_undiscovered_screener),
-                ("coiled_spring", self.run_coiled_spring_screener),
-            ]
+            # Screener parameters
+            undiscovered_params = {
+                "max_institutional_ownership": 25.0,
+                "max_analyst_coverage": 5,
+                "require_insider_buying": False,
+            }
+            coiled_spring_params = {
+                "max_volatility_30d": 20.0,
+                "require_nr7": True,
+                "min_percentile_rank": 30.0,
+            }
 
-            for screener_name, screener_func in screeners:
-                try:
-                    # Run screener
-                    results = screener_func(universe)
+            # Process tickers in parallel with shared data
+            logger.info("Step 2: Processing tickers through both screeners (parallel)...")
+            screening_start = datetime.now()
 
-                    # Save to Firestore
-                    self.save_to_firestore(screener_name, results)
+            undiscovered_results = []
+            coiled_spring_results = []
+            total_api_calls = 0
+            failed_tickers = []
+            not_found_tickers = []
+            processed_count = 0
 
-                except Exception as e:
-                    logger.error(f"✗ Failed to run {screener_name}: {e}")
-                    logger.error(traceback.format_exc())
-                    continue
+            # Use ThreadPoolExecutor for parallel processing (3 workers = conservative)
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                # Submit all ticker processing tasks
+                future_to_ticker = {
+                    executor.submit(
+                        self._process_ticker,
+                        ticker,
+                        undiscovered_params,
+                        coiled_spring_params
+                    ): ticker
+                    for ticker in universe
+                }
+
+                # Process completed futures as they finish
+                for future in as_completed(future_to_ticker):
+                    ticker = future_to_ticker[future]
+                    processed_count += 1
+
+                    # Log progress every 50 tickers
+                    if processed_count % 50 == 0:
+                        self._log_progress(processed_count, len(universe), screening_start)
+
+                    try:
+                        undiscovered_result, coiled_spring_result, api_calls = future.result()
+                        total_api_calls += api_calls
+
+                        # Collect results
+                        if undiscovered_result:
+                            undiscovered_results.append(undiscovered_result)
+                        if coiled_spring_result:
+                            coiled_spring_results.append(coiled_spring_result)
+
+                    except Exception as e:
+                        # Categorize error
+                        self._categorize_error(ticker, e, failed_tickers, not_found_tickers)
+
+            # Sort results by score
+            undiscovered_results.sort(key=lambda x: x["score"], reverse=True)
+            coiled_spring_results.sort(key=lambda x: x["score"], reverse=True)
+
+            screening_elapsed = (datetime.now() - screening_start).total_seconds()
+            self.metrics['api_calls'] = total_api_calls
+
+            # Log screening metrics
+            actual_rate = (total_api_calls / screening_elapsed * 60) if screening_elapsed > 0 else 0
+            rate_utilization = (actual_rate / 55 * 100) if actual_rate > 0 else 0
+
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("SCREENING COMPLETE")
+            logger.info(f"✓ Undiscovered: {len(undiscovered_results)} stocks passed")
+            logger.info(f"✓ Coiled Spring: {len(coiled_spring_results)} stocks passed")
+            logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
+            logger.info(f"✗ Failed (errors): {len(failed_tickers)} tickers")
+            if failed_tickers:
+                logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
+                           (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
+            logger.info(f"⏱  Screening time: {screening_elapsed:.1f} seconds")
+            logger.info("")
+            logger.info("📊 Screening Metrics:")
+            logger.info(f"  - API Calls: {total_api_calls}")
+            logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
+            logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
+            logger.info(f"  - Tickers/Second: {(len(universe) / screening_elapsed):.2f}" if screening_elapsed > 0 else "  - Tickers/Second: 0.00")
+            logger.info(f"  - Avg API Calls/Ticker: {(total_api_calls / len(universe)):.2f}" if len(universe) > 0 else "  - Avg API Calls/Ticker: 0.00")
+            logger.info("=" * 80)
+
+            # Step 3: Save results to Firestore
+            logger.info("")
+            logger.info("Step 3: Saving results to Firestore...")
+
+            # Save Undiscovered results
+            undiscovered_data = {
+                "screener_name": "The Undiscovered",
+                "results": undiscovered_results[:100],  # Top 100 only
+                "total_results": len(undiscovered_results),
+                "total_screened": len(universe),
+                "failed_count": len(failed_tickers),
+                "not_found_count": len(not_found_tickers),
+                "execution_time_seconds": round(screening_elapsed, 2),
+                "parameters": undiscovered_params,
+                "timestamp": self.run_timestamp.isoformat(),
+            }
+            self.save_to_firestore("undiscovered", undiscovered_data)
+
+            # Save Coiled Spring results
+            coiled_spring_data = {
+                "screener_name": "The Coiled Spring",
+                "results": coiled_spring_results[:100],  # Top 100 only
+                "total_results": len(coiled_spring_results),
+                "total_screened": len(universe),
+                "failed_count": len(failed_tickers),
+                "not_found_count": len(not_found_tickers),
+                "execution_time_seconds": round(screening_elapsed, 2),
+                "parameters": coiled_spring_params,
+                "timestamp": self.run_timestamp.isoformat(),
+            }
+            self.save_to_firestore("coiled_spring", coiled_spring_data)
 
             # Calculate and log total job execution time
             total_execution_time = (datetime.now() - job_start_time).total_seconds()
             total_minutes = int(total_execution_time // 60)
             total_seconds = int(total_execution_time % 60)
 
-            # Calculate overall metrics
-            total_api_calls = self.metrics['api_calls']
             overall_rate = (total_api_calls / total_execution_time * 60) if total_execution_time > 0 else 0
             overall_utilization = (overall_rate / 55 * 100) if overall_rate > 0 else 0
 
+            logger.info("")
             logger.info("=" * 80)
             logger.info("REGULAR STOCK SCREENERS - Completed successfully")
             logger.info(f"⏱  Total execution time: {total_minutes}m {total_seconds}s ({total_execution_time:.1f} seconds)")
@@ -767,7 +1046,8 @@ class DailyScreenerJob:
             logger.info(f"  - Total API Calls: {total_api_calls}")
             logger.info(f"  - Overall Rate: {overall_rate:.2f} calls/min")
             logger.info(f"  - Rate Limit Utilization: {overall_utilization:.1f}%")
-            logger.info(f"  - Total Tickers Processed: {len(universe) * 2}")  # 2 screeners
+            logger.info(f"  - Total Tickers Processed: {len(universe)}")
+            logger.info(f"  - Optimization: Shared data (1 fundamentals fetch per ticker vs 2)")
             logger.info("=" * 80)
 
             return {"status": "success", "timestamp": self.run_timestamp.isoformat()}
