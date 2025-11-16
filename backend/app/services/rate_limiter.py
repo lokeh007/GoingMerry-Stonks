@@ -129,4 +129,4 @@ class TokenBucket:
                     sleep_time = min(sleep_time, timeout - elapsed)
 
             logger.debug(f"Waiting {sleep_time:.2f}s for {tokens} token(s)")
-            time.sleep(min(sleep_time, 0.1))  # Sleep max 100ms at a time
+            time.sleep(min(sleep_time, 0.01))  # Sleep max 10ms at a time (optimized for parallel workers)
