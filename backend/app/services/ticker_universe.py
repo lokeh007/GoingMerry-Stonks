@@ -248,9 +248,13 @@ class TickerUniverseProvider:
         - Tickers with numbers (usually warrants)
         - ETFs (comprehensive whitelist - no pattern matching to avoid false positives)
         - Test symbols
+        - Delisted tickers (permanent exclusion list)
         """
         # Comprehensive ETF whitelist (preferred over pattern matching)
         known_etfs = self._get_comprehensive_etf_list()
+
+        # Delisted tickers (permanent exclusion list)
+        delisted_tickers = self._get_delisted_ticker_list()
 
         filtered = []
         etf_count = 0
@@ -263,6 +267,7 @@ class TickerUniverseProvider:
             "has_numbers": 0,
             "known_etf": 0,
             "test_symbol": 0,
+            "delisted": 0,
         }
 
         for ticker in tickers:
@@ -304,6 +309,11 @@ class TickerUniverseProvider:
                 filtered_by_reason["test_symbol"] += 1
                 continue
 
+            # Skip delisted tickers (permanent exclusion list)
+            if ticker in delisted_tickers:
+                filtered_by_reason["delisted"] += 1
+                continue
+
             filtered.append(ticker)
 
         # Log filtering statistics
@@ -315,6 +325,7 @@ class TickerUniverseProvider:
         logger.info(f"  - Has numbers: {filtered_by_reason['has_numbers']}")
         logger.info(f"  - Known ETFs: {filtered_by_reason['known_etf']}")
         logger.info(f"  - Test symbols: {filtered_by_reason['test_symbol']}")
+        logger.info(f"  - Delisted tickers: {filtered_by_reason['delisted']}")
 
         return filtered
 
@@ -448,6 +459,54 @@ class TickerUniverseProvider:
             # ===== Bond ETFs =====
             "BND", "AGG", "LQD", "HYG", "JNK", "MUB", "TLT", "IEF", "SHY",
             "VCSH", "VCIT", "VGSH", "VGIT", "VGLT", "EMB", "BNDX", "JPST",
+        }
+
+    def _get_delisted_ticker_list(self) -> Set[str]:
+        """
+        Get comprehensive list of known delisted tickers (permanent exclusion).
+
+        These tickers are permanently excluded from screening to prevent
+        wasted API calls on invalid/delisted securities.
+
+        Returns:
+            Set of delisted ticker symbols
+        """
+        return {
+            # ===== Batch 1 Delisted Tickers (A-D) =====
+            # (Add any known delisted tickers from A-D range here)
+
+            # ===== Batch 2 Delisted Tickers (E-J) =====
+            # JMAKY - No price data (delisted)
+            "JMAKY",
+
+            # ===== Batch 3 Delisted Tickers (K-N) =====
+            # From November 16, 2025 Batch 3 run (timeout at 3 hours)
+            "MSTKY",   # No price data (delisted)
+            "MASTLW",  # Warrant (delisted)
+            "MTMTY",   # No price data (delisted)
+            "MSSWF",   # No price data (delisted)
+            "MSTLW",   # Warrant (delisted)
+            "MTEKW",   # Warrant (delisted)
+            "MTLPF",   # No price data (delisted)
+            "MUNX",    # No price data (delisted)
+            "MVSTW",   # Warrant (delisted)
+
+            # Previously identified in earlier batch 3 runs
+            "MMTX",    # No price data (delisted)
+            "MNZLY",   # No price data (delisted)
+            "MOVAA",   # No price data (delisted)
+            "MPJS",    # No price data (delisted)
+            "MRCA",    # No price data (delisted)
+            "MREGY",   # No price data (delisted)
+            "MROSY",   # No price data (delisted)
+            "MRUWY",   # No price data (delisted)
+            "LOMWF",   # No price data (delisted)
+
+            # ===== Batch 4 Delisted Tickers (O-S) =====
+            # (Add any known delisted tickers from O-S range here)
+
+            # ===== Batch 5 Delisted Tickers (T-Z) =====
+            # (Add any known delisted tickers from T-Z range here)
         }
 
     def _is_cache_valid(self, cache_key: str) -> bool:
