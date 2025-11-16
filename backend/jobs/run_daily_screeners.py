@@ -902,7 +902,7 @@ class DailyScreenerJob:
 
         This method processes both screeners simultaneously with:
         - Shared fundamental data (fetched once per ticker)
-        - Parallel processing (6 concurrent workers)  # Documentation fix: code always used 6 workers
+        - Parallel processing (6 concurrent workers)
         - Optimized rate limiting (58 req/min via token bucket with 2x burst capacity)
         """
         job_start_time = datetime.now()
