@@ -155,7 +155,8 @@ Encountered multiple delisted tickers that caused:
 **Known delisted tickers in K-N range**:
 - Previous batch 3 run: 9 tickers (MMTX, MNZLY, MOVAA, MPJS, MRCA, MREGY, MROSY, MRUWY, LOMWF)
 - This batch 3 run: 9 additional tickers (now added to exclusion list)
-- **Total**: 18 delisted tickers = ~54 wasted API calls = ~11 minutes lost
+- Batch 2: 1 ticker (JMAKY, also excluded)
+- **Total**: 19 delisted tickers = ~57 wasted API calls = ~12 minutes lost
 
 #### 3. **Lock Contention**
 With 6 workers competing for tokens:
@@ -223,10 +224,10 @@ def _get_delisted_ticker_list(self) -> Set[str]:
 
 | Metric | Value |
 |--------|-------|
-| Delisted tickers excluded | 9 (new) + 9 (previous) = 18 total |
+| Delisted tickers excluded | 9 (new) + 9 (previous) + 1 (Batch 2: JMAKY) = 19 total |
 | API calls saved per ticker | ~3 (fundamentals, analyst, volatility) |
-| Total API calls saved | 54 calls |
-| Time saved (at 58 req/min) | ~56 seconds |
+| Total API calls saved | 57 calls |
+| Time saved (at 58 req/min) | ~59 seconds |
 | Time saved (including timeouts) | ~5-10 minutes |
 | % Improvement | ~0.5-1% (marginal) |
 
@@ -331,7 +332,7 @@ def _get_delisted_ticker_list(self) -> Set[str]:
 
 1. **`backend/app/services/ticker_universe.py`**
    - Added `_get_delisted_ticker_list()` method
-   - Added 18 delisted tickers to permanent exclusion list
+   - Added 18 Batch 3 delisted tickers (plus JMAKY from Batch 2) to permanent exclusion list
    - Updated `_apply_basic_filters()` to check delisted list
 
 2. **`backend/jobs/add_batch3_additional_delisted.py`** (NEW)
