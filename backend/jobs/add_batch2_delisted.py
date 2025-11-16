@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 def main():
     """Add Batch 2 delisted tickers to blacklist."""
 
-    # Delisted tickers from Batch 2 error log (November 13, 2025)
+    # Delisted tickers from Batch 2 error log (from November 13, 2025 run)
     delisted_tickers = [
         "FNIGX",   # No price data available
         "FOACW",   # No price data available
