@@ -3,10 +3,10 @@
 Smart Money Screener (Options Flow) - Cloud Run Job (Batched Execution)
 
 Runs ONLY The Smart Money (options flow) screener against the full NYSE + NASDAQ
-universe (~6000 stocks) in 5 batches with reduced rate limits (45 req/min).
+universe (~6000 stocks) in 5 batches with increased rate limits (50 req/min).
 
 This screener is separated from regular screeners due to higher API token consumption
-(3 tokens per ticker for options data vs 2 tokens for regular screeners).
+(5 API calls per ticker for options data vs 2 calls for regular screeners).
 
 Batch Schedule (Sequential - runs AFTER regular screeners complete):
 - Batch 1: 12:15 AM ET - Tickers A-D (~1200 stocks) [15-min buffer after regular batch 5]
@@ -16,7 +16,7 @@ Batch Schedule (Sequential - runs AFTER regular screeners complete):
 - Batch 5: 8:00 AM ET - Tickers T-Z (~1200 stocks)
 
 Estimated runtime per batch: ~120 minutes (2 hours)
-Rate limit: 45 requests/minute (vs 60 req/min for regular screeners)
+Rate limit: 50 requests/minute (vs 60 req/min for regular screeners)
 Data sources: Yahoo Finance (free, no API keys required)
 """
 
@@ -80,7 +80,7 @@ class SmartMoneyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # YFinanceProvider with increased rate limit (50 req/min for options flow - uses 3 calls per ticker)
+        # YFinanceProvider with increased rate limit (50 req/min for options flow - uses 5 calls per ticker)
         self.yf_provider = YFinanceProvider(max_requests_per_minute=50)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
@@ -89,14 +89,12 @@ class SmartMoneyScreenerJob:
         # Metrics tracking
         self.metrics = {
             'api_calls': 0,
-            'cache_hits': 0,
-            'start_time': None,
-            'wait_time': 0.0
+            'start_time': None
         }
 
         if batch_number:
             logger.info(f"Initializing Smart Money Screener Job - Batch {batch_number}/5")
-            logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (3 calls/ticker)")
+            logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (5 calls/ticker)")
 
     def _categorize_error(
         self,
@@ -246,9 +244,9 @@ class SmartMoneyScreenerJob:
                 self._log_progress(i, len(universe), start_time)
 
             try:
-                # Get options flow metrics (3 API calls: options data, volume history, fundamentals)
+                # Get options flow metrics (3 API calls: 1 for options list + 2 for option chains)
                 options_flow = self.yf_provider.get_options_flow_metrics(ticker)
-                screener_api_calls += 3  # Options flow uses 3 calls per ticker
+                screener_api_calls += 3  # Options flow: 3 calls
 
                 # Check for API errors (timeout, rate limit, etc.)
                 if options_flow.get("error") is not None:
@@ -271,8 +269,9 @@ class SmartMoneyScreenerJob:
                 if avg_vol > 0 and total_vol < (avg_vol * unusual_volume_multiplier):
                     continue
 
-                # Get fundamentals for display (already called in options_flow, using cache)
+                # Get fundamentals for display (2 API calls: ticker.info + quarterly_financials)
                 fundamentals = self.yf_provider.get_fundamentals(ticker)
+                screener_api_calls += 2  # Fundamentals: 2 calls
 
                 # Calculate score (0-100)
                 score = self._calculate_smart_money_score(options_flow, min_call_to_put_ratio)
@@ -318,10 +317,10 @@ class SmartMoneyScreenerJob:
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
         logger.info("")
         logger.info("📊 Metrics Summary:")
-        logger.info(f"  - API Calls: {screener_api_calls} (3 calls/ticker)")
+        logger.info(f"  - API Calls: {screener_api_calls} (5 calls/ticker)")
         logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
         logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
-        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
+        logger.info(f"  - Tickers/Second: {(len(universe) / execution_time):.2f}" if execution_time > 0 else "  - Tickers/Second: 0.00")
 
         return {
             "screener_name": "The Smart Money",
@@ -438,7 +437,7 @@ class SmartMoneyScreenerJob:
         logger.info("=" * 80)
         logger.info("SMART MONEY SCREENER (OPTIONS FLOW) - Starting execution")
         logger.info(f"Timestamp: {self.run_timestamp}")
-        logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (3 calls/ticker)")
+        logger.info("Rate limiting: 50 req/min with adaptive exponential backoff (5 calls/ticker)")
         logger.info("=" * 80)
 
         try:
