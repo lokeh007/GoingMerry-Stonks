@@ -65,9 +65,10 @@ def main():
         logger.info(f"Already blacklisted ({len(already_blacklisted)}): {', '.join(already_blacklisted)}")
         logger.info("")
 
-    # Add batch to blacklist
-    logger.info("Adding tickers to blacklist...")
-    cache.add_batch_to_blacklist(delisted_tickers, error_type="no_data")
+    # Add tickers to blacklist individually to preserve failure counts
+    logger.info("Adding tickers to blacklist (preserving failure counts)...")
+    for ticker in delisted_tickers:
+        cache.add_to_blacklist(ticker, error_type="no_data")
 
     logger.info("✓ Successfully added tickers to blacklist")
     logger.info("")

@@ -23,7 +23,8 @@ This document tracks performance optimizations for the batch screener jobs (`run
 ## ✅ Tier 1 Optimizations (IMPLEMENTED)
 
 **Status**: Deployed November 16, 2025
-**Expected Impact**: 3-4x improvement (6-8 tickers/min, ~3 hours total)
+**Expected Impact**: 10-20% improvement (2.4-2.6 tickers/min, ~8 hours total)
+**Note**: Tier 1 changes are conservative rate-limit optimizations, not algorithmic improvements
 
 ### 1. Reduce Token Bucket Sleep Interval
 **File**: `backend/app/services/rate_limiter.py:132`
@@ -52,7 +53,7 @@ time.sleep(min(sleep_time, 0.01))  # Sleep max 10ms at a time
 **Change**:
 ```python
 # Before
-capacity=max_requests_per_minute,  # 58 tokens
+capacity=max_requests_per_minute,  # 55 tokens
 
 # After
 capacity=max_requests_per_minute * 2,  # 116 tokens (2x burst)
@@ -80,8 +81,8 @@ YFinanceProvider(max_requests_per_minute=58)  # 97% of limit
 ```
 
 **Rationale**:
-- Previous setting was too conservative (only 12% utilized)
-- 58 req/min provides better throughput while still having safety margin
+- Previous setting was conservative (91.7% utilization)
+- 58 req/min provides better throughput while still having safety margin (97% utilization)
 
 **Risk**: Low - Still below 60 req/min hard limit
 
@@ -90,7 +91,7 @@ YFinanceProvider(max_requests_per_minute=58)  # 97% of limit
 ## 🔄 Tier 2 Optimizations (RECOMMENDED NEXT)
 
 **Status**: Not implemented
-**Expected Impact**: 6-7x improvement (12-15 tickers/min, ~1.5 hours total)
+**Expected Impact**: 2-3x improvement (4-6 tickers/min, ~4 hours total)
 **Implementation Effort**: Medium (2-3 hours)
 
 ### 4. Increase Worker Count
@@ -209,8 +210,9 @@ def _fetch_without_rate_limit(self, ticker: str, data_type: str):
 ## 🚀 Tier 3 Optimizations (FUTURE)
 
 **Status**: Not implemented
-**Expected Impact**: 9-10x improvement (18-20 tickers/min, ~1 hour total)
-**Implementation Effort**: High (1-2 days)
+**Expected Impact**: 6-7x improvement (12-15 tickers/min, ~1.5 hours total)
+**Implementation Effort**: High (1-2 weeks)
+**Note**: To exceed these targets, would need to reduce API calls per ticker or upgrade to paid API tier
 
 ### 6. Migrate to AsyncIO + aiohttp
 **Files**: Entire `yfinance_provider.py` and `run_daily_screeners.py`
@@ -386,10 +388,10 @@ def process_ticker_batch(self, tickers: List[str], batch_size: int = 50):
 | Tier | Implementation Status | Expected Rate | Batch Runtime | Total Improvement | Effort |
 |------|----------------------|---------------|---------------|-------------------|--------|
 | **Baseline** | - | 2.16 tickers/min | 9.3 hours | 1x | - |
-| **Tier 1** | ✅ Implemented | 6-8 tickers/min | 3.0 hours | 3-4x | 1 hour |
-| **Tier 2** | 🔄 Recommended | 12-15 tickers/min | 1.5 hours | 6-7x | 3 hours |
-| **Tier 3 (AsyncIO)** | 🚀 Future | 18-20 tickers/min | 1.0 hour | 9-10x | 2 weeks |
-| **Tier 3 (Batching)** | 🚀 Alternative | 15-18 tickers/min | 1.2 hours | 7-8x | 3 days |
+| **Tier 1** | ✅ Implemented | 2.4-2.6 tickers/min | 8.0 hours | 1.1-1.2x | 1 hour |
+| **Tier 2** | 🔄 Recommended | 4-6 tickers/min | 4.0 hours | 2-3x | 3 hours |
+| **Tier 3 (AsyncIO)** | 🚀 Future | 12-15 tickers/min | 1.5 hours | 6-7x | 2 weeks |
+| **Tier 3 (Batching)** | 🚀 Alternative | 10-12 tickers/min | 1.8 hours | 5-6x | 3 days |
 
 ---
 
@@ -487,8 +489,8 @@ For Tier 2 and Tier 3 optimizations:
    - Collect performance metrics
 
 2. **Short-term** (This Week):
-   - If Tier 1 achieves 6-8 tickers/min: SUCCESS, monitor for stability
-   - If Tier 1 < 6 tickers/min: Implement Tier 2.4 (increase workers to 10)
+   - If Tier 1 achieves 2.4-2.6 tickers/min: SUCCESS, proceed with Tier 2
+   - If Tier 1 < 2.4 tickers/min: Investigate bottlenecks before proceeding
    - Document actual performance improvements
 
 3. **Medium-term** (Next 2 Weeks):
@@ -498,8 +500,8 @@ For Tier 2 and Tier 3 optimizations:
 
 4. **Long-term** (Next Month):
    - Full Tier 3 implementation and testing
-   - Achieve target performance: 18-20 tickers/min (~1 hour per batch)
-   - Consider additional optimizations (caching, CDN, etc.)
+   - Achieve target performance: 12-15 tickers/min (~1.5 hours per batch)
+   - To go faster: Reduce API calls per ticker or upgrade to paid API tier
 
 ---
 
