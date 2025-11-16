@@ -267,14 +267,24 @@ class DailyScreenerJob:
             fundamentals = self.yf_provider.get_fundamentals(ticker)
             api_calls += 1
 
+            # Add null check for fundamentals data
+            if fundamentals is None or not isinstance(fundamentals, dict):
+                logger.debug(f"No fundamentals data for {ticker}, skipping")
+                return None, None, api_calls
+
             # Evaluate for Undiscovered screener
             undiscovered_result = None
             try:
                 analyst_data = self.yf_provider.get_analyst_and_insider_data(ticker)
                 api_calls += 1
-                undiscovered_result = self._evaluate_undiscovered(
-                    ticker, fundamentals, analyst_data, undiscovered_params
-                )
+
+                # Add null check for analyst data
+                if analyst_data is None or not isinstance(analyst_data, dict):
+                    logger.debug(f"No analyst data for {ticker}, skipping Undiscovered")
+                else:
+                    undiscovered_result = self._evaluate_undiscovered(
+                        ticker, fundamentals, analyst_data, undiscovered_params
+                    )
             except Exception as e:
                 logger.debug(f"Undiscovered evaluation failed for {ticker}: {e}")
 
@@ -283,9 +293,14 @@ class DailyScreenerJob:
             try:
                 volatility = self.yf_provider.get_volatility_metrics(ticker)
                 api_calls += 1
-                coiled_spring_result = self._evaluate_coiled_spring(
-                    ticker, fundamentals, volatility, coiled_spring_params
-                )
+
+                # Add null check for volatility data
+                if volatility is None or not isinstance(volatility, dict):
+                    logger.debug(f"No volatility data for {ticker}, skipping Coiled Spring")
+                else:
+                    coiled_spring_result = self._evaluate_coiled_spring(
+                        ticker, fundamentals, volatility, coiled_spring_params
+                    )
             except Exception as e:
                 logger.debug(f"Coiled Spring evaluation failed for {ticker}: {e}")
 
@@ -897,7 +912,7 @@ class DailyScreenerJob:
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
         logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
-        logger.info("Parallel processing: 3 concurrent workers (shared data optimization)")
+        logger.info("Parallel processing: 6 concurrent workers (shared data optimization)")
         logger.info("=" * 80)
 
         try:
@@ -946,8 +961,8 @@ class DailyScreenerJob:
             not_found_tickers = []
             processed_count = 0
 
-            # Use ThreadPoolExecutor for parallel processing (3 workers = conservative)
-            with ThreadPoolExecutor(max_workers=3) as executor:
+            # Use ThreadPoolExecutor for parallel processing (6 workers = optimized)
+            with ThreadPoolExecutor(max_workers=6) as executor:
                 # Submit all ticker processing tasks
                 future_to_ticker = {
                     executor.submit(

@@ -111,7 +111,7 @@ class YFinanceProvider:
 
             return ticker
 
-    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    @adaptive_backoff_with_jitter(max_retries=4, base_delay=1.0, max_delay=30.0, rate_limit_multiplier=1.5)
     def _fetch_ticker_info(self, ticker: yf.Ticker) -> dict:
         """
         Fetch ticker.info with proactive rate limiting and retry logic.
@@ -133,7 +133,7 @@ class YFinanceProvider:
         self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.info
 
-    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    @adaptive_backoff_with_jitter(max_retries=4, base_delay=1.0, max_delay=30.0, rate_limit_multiplier=1.5)
     def _fetch_ticker_history(self, ticker: yf.Ticker, **kwargs) -> pd.DataFrame:
         """
         Fetch ticker.history with proactive rate limiting and retry logic.
@@ -156,7 +156,7 @@ class YFinanceProvider:
         self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.history(**kwargs)
 
-    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    @adaptive_backoff_with_jitter(max_retries=4, base_delay=1.0, max_delay=30.0, rate_limit_multiplier=1.5)
     def _fetch_option_chain(self, ticker: yf.Ticker, expiry: str):
         """
         Fetch ticker.option_chain with proactive rate limiting and retry logic.
@@ -179,7 +179,7 @@ class YFinanceProvider:
         self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.option_chain(expiry)
 
-    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    @adaptive_backoff_with_jitter(max_retries=4, base_delay=1.0, max_delay=30.0, rate_limit_multiplier=1.5)
     def _fetch_insider_transactions(self, ticker: yf.Ticker) -> pd.DataFrame:
         """
         Fetch ticker.insider_transactions with proactive rate limiting and retry logic.
@@ -201,7 +201,7 @@ class YFinanceProvider:
         self.rate_limiter.acquire(tokens=1, blocking=True)
         return ticker.insider_transactions
 
-    @adaptive_backoff_with_jitter(max_retries=5, base_delay=2.0, max_delay=120.0, rate_limit_multiplier=2.5)
+    @adaptive_backoff_with_jitter(max_retries=4, base_delay=1.0, max_delay=30.0, rate_limit_multiplier=1.5)
     def _fetch_ticker_financials(self, ticker: yf.Ticker, quarterly: bool = False):
         """
         Fetch ticker financials with proactive rate limiting and retry logic.
