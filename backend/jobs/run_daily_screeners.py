@@ -80,15 +80,23 @@ class DailyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # YFinanceProvider now uses adaptive exponential backoff (no rate limit config needed)
-        self.yf_provider = YFinanceProvider()
+        # YFinanceProvider with increased rate limit (55 req/min, safe margin from 60 limit)
+        self.yf_provider = YFinanceProvider(max_requests_per_minute=55)
         self.ticker_provider = TickerUniverseProvider()
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
+        # Metrics tracking
+        self.metrics = {
+            'api_calls': 0,
+            'cache_hits': 0,
+            'start_time': None,
+            'wait_time': 0.0
+        }
+
         if batch_number:
             logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
-            logger.info("Rate limiting: Adaptive exponential backoff with jitter")
+            logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
 
     def _categorize_error(
         self,
@@ -245,6 +253,8 @@ class DailyScreenerJob:
         logger.info("=" * 80)
 
         start_time = datetime.now()
+        self.metrics['start_time'] = start_time
+        screener_api_calls = 0
         results = []
         failed_tickers = []
         not_found_tickers = []  # Track 404s separately
@@ -262,11 +272,13 @@ class DailyScreenerJob:
                 self._log_progress(i, len(universe), start_time)
 
             try:
-                # Get fundamentals
+                # Get fundamentals (1 API call)
                 fundamentals = self.yf_provider.get_fundamentals(ticker)
+                screener_api_calls += 1
 
-                # Get analyst and insider data
+                # Get analyst and insider data (1 API call)
                 analyst_data = self.yf_provider.get_analyst_and_insider_data(ticker)
+                screener_api_calls += 1
 
                 # Apply filters
                 inst_ownership = fundamentals.get("institutional_ownership", 100)
@@ -310,6 +322,11 @@ class DailyScreenerJob:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         execution_time = (datetime.now() - start_time).total_seconds()
+        self.metrics['api_calls'] += screener_api_calls
+
+        # Calculate metrics
+        actual_rate = (screener_api_calls / execution_time * 60) if execution_time > 0 else 0
+        rate_utilization = (actual_rate / 55 * 100) if actual_rate > 0 else 0
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
@@ -318,6 +335,12 @@ class DailyScreenerJob:
             logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
                        (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
+        logger.info("")
+        logger.info("📊 Metrics Summary:")
+        logger.info(f"  - API Calls: {screener_api_calls}")
+        logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
+        logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
+        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
 
         return {
             "screener_name": "The Undiscovered",
@@ -350,6 +373,7 @@ class DailyScreenerJob:
         logger.info("=" * 80)
 
         start_time = datetime.now()
+        screener_api_calls = 0
         results = []
         failed_tickers = []
         not_found_tickers = []  # Track 404s separately
@@ -367,9 +391,11 @@ class DailyScreenerJob:
                 self._log_progress(i, len(universe), start_time)
 
             try:
-                # Get fundamentals and volatility metrics
+                # Get fundamentals and volatility metrics (2 API calls)
                 fundamentals = self.yf_provider.get_fundamentals(ticker)
+                screener_api_calls += 1
                 volatility = self.yf_provider.get_volatility_metrics(ticker)
+                screener_api_calls += 1
 
                 # Apply filters
                 has_nr7 = volatility.get("has_nr7", False)
@@ -411,6 +437,11 @@ class DailyScreenerJob:
         results.sort(key=lambda x: x["score"], reverse=True)
 
         execution_time = (datetime.now() - start_time).total_seconds()
+        self.metrics['api_calls'] += screener_api_calls
+
+        # Calculate metrics
+        actual_rate = (screener_api_calls / execution_time * 60) if execution_time > 0 else 0
+        rate_utilization = (actual_rate / 55 * 100) if actual_rate > 0 else 0
 
         logger.info(f"✓ Screening complete: {len(results)} stocks passed")
         logger.info(f"⚠ Not found (404): {len(not_found_tickers)} tickers")
@@ -419,6 +450,12 @@ class DailyScreenerJob:
             logger.info(f"   Failed tickers: {', '.join(failed_tickers[:10])}" +
                        (f" ... and {len(failed_tickers) - 10} more" if len(failed_tickers) > 10 else ""))
         logger.info(f"⏱  Execution time: {execution_time:.1f} seconds")
+        logger.info("")
+        logger.info("📊 Metrics Summary:")
+        logger.info(f"  - API Calls: {screener_api_calls}")
+        logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
+        logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
+        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
 
         return {
             "screener_name": "The Coiled Spring",
@@ -683,12 +720,17 @@ class DailyScreenerJob:
         logger.info("REGULAR STOCK SCREENERS - Starting execution")
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
-        logger.info("Rate limiting: Adaptive exponential backoff with jitter")
+        logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
         logger.info("=" * 80)
 
         try:
-            # Get stock universe
+            # Get stock universe (measure initialization time)
+            logger.info("Step 1: Fetching stock universe...")
+            universe_start = datetime.now()
             universe = self.get_full_exchange_universe()
+            universe_elapsed = (datetime.now() - universe_start).total_seconds()
+            logger.info(f"✓ Universe loaded in {universe_elapsed:.1f}s ({len(universe)} stocks)")
+            logger.info("")
 
             # Run regular screeners only (Smart Money runs separately)
             screeners = [
@@ -714,9 +756,20 @@ class DailyScreenerJob:
             total_minutes = int(total_execution_time // 60)
             total_seconds = int(total_execution_time % 60)
 
+            # Calculate overall metrics
+            total_api_calls = self.metrics['api_calls']
+            overall_rate = (total_api_calls / total_execution_time * 60) if total_execution_time > 0 else 0
+            overall_utilization = (overall_rate / 55 * 100) if overall_rate > 0 else 0
+
             logger.info("=" * 80)
             logger.info("REGULAR STOCK SCREENERS - Completed successfully")
             logger.info(f"⏱  Total execution time: {total_minutes}m {total_seconds}s ({total_execution_time:.1f} seconds)")
+            logger.info("")
+            logger.info("📊 Overall Job Metrics:")
+            logger.info(f"  - Total API Calls: {total_api_calls}")
+            logger.info(f"  - Overall Rate: {overall_rate:.2f} calls/min")
+            logger.info(f"  - Rate Limit Utilization: {overall_utilization:.1f}%")
+            logger.info(f"  - Total Tickers Processed: {len(universe) * 2}")  # 2 screeners
             logger.info("=" * 80)
 
             return {"status": "success", "timestamp": self.run_timestamp.isoformat()}
