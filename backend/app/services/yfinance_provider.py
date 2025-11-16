@@ -65,10 +65,10 @@ class YFinanceProvider:
         self.ticker_cache_lock = threading.Lock()  # Thread safety for ticker cache
 
         # Proactive rate limiter (token bucket)
-        # Set capacity equal to rate for smooth request distribution
+        # Set capacity to 2x rate to allow burst requests and reduce worker blocking
         self.rate_limiter = TokenBucket(
             rate=max_requests_per_minute,
-            capacity=max_requests_per_minute,
+            capacity=max_requests_per_minute * 2,  # 2x burst capacity
             time_unit=60.0  # 60 seconds = 1 minute
         )
 

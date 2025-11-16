@@ -82,8 +82,8 @@ class DailyScreenerJob:
                          If None, uses representative universe (legacy mode).
         """
         self.db = firestore.Client()
-        # YFinanceProvider with increased rate limit (55 req/min, safe margin from 60 limit)
-        self.yf_provider = YFinanceProvider(max_requests_per_minute=55)
+        # YFinanceProvider with optimized rate limit (58 req/min, 97% of 60 limit)
+        self.yf_provider = YFinanceProvider(max_requests_per_minute=58)
         self.ticker_provider = TickerUniverseProvider()
         self.delisted_cache = DelistedTickerCache(ttl_days=30)  # Retry delisted after 30 days
         self.run_timestamp = datetime.now(timezone.utc)
@@ -97,7 +97,7 @@ class DailyScreenerJob:
 
         if batch_number:
             logger.info(f"Initializing Daily Screener Job - Batch {batch_number}/5")
-            logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
+            logger.info("Rate limiting: 58 req/min with adaptive exponential backoff")
 
     def _categorize_error(
         self,
@@ -902,8 +902,8 @@ class DailyScreenerJob:
 
         This method processes both screeners simultaneously with:
         - Shared fundamental data (fetched once per ticker)
-        - Parallel processing (3 concurrent workers)
-        - Conservative rate limiting (55 req/min via token bucket)
+        - Parallel processing (6 concurrent workers)
+        - Optimized rate limiting (58 req/min via token bucket with 2x burst capacity)
         """
         job_start_time = datetime.now()
 
@@ -911,7 +911,7 @@ class DailyScreenerJob:
         logger.info("REGULAR STOCK SCREENERS - Starting execution")
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
-        logger.info("Rate limiting: 55 req/min with adaptive exponential backoff")
+        logger.info("Rate limiting: 58 req/min with adaptive exponential backoff")
         logger.info("Parallel processing: 6 concurrent workers (shared data optimization)")
         logger.info("=" * 80)
 
