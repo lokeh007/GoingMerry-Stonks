@@ -77,6 +77,9 @@ class DelistedTickerScanner:
         """
         Check if ticker has valid data with minimal API calls.
 
+        Uses YFinanceProvider service (respects rate limiting and has adaptive backoff).
+        Only checks ticker.info (1 API call) - much faster than full fundamentals.
+
         Args:
             ticker: Ticker symbol to check
 
@@ -86,24 +89,24 @@ class DelistedTickerScanner:
             - error_type: "no_data", "404", "timeout", "rate_limit", or None
         """
         try:
-            # Try to get basic ticker info (1 API call)
-            # This is the lightest check - just verifies ticker exists
-            import yfinance as yf
-            ticker_obj = yf.Ticker(ticker)
-
-            # Attempt to get basic info
-            info = ticker_obj.info
+            # Lightweight check using ticker_details (1 API call vs 2-3 for get_fundamentals)
+            # This is ~3x faster but still uses YFinanceProvider with rate limiting
+            details = self.yf_provider.get_ticker_details(ticker)
 
             # Check if we got any meaningful data
-            # Valid tickers will have at least a symbol or regularMarketPrice
-            if not info or len(info) <= 2:
+            if not details:
                 return False, "no_data"
 
-            # Check for explicit error indicators
-            if 'trailingPegRatio' not in info and 'symbol' not in info:
-                return False, "no_data"
+            # Valid tickers will have at least a company name or market cap
+            has_name = details.get("longName") or details.get("shortName")
+            has_market_cap = details.get("marketCap") is not None
+            has_price = details.get("currentPrice") or details.get("regularMarketPrice")
 
-            return True, None
+            # If we have at least one of these, ticker is valid
+            if has_name or has_market_cap or has_price:
+                return True, None
+            else:
+                return False, "no_data"
 
         except Exception as e:
             error_msg = str(e).lower()
