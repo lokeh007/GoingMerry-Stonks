@@ -64,7 +64,8 @@ class DailySummaryReport:
         """
         results = {}
 
-        screener_names = ["undiscovered", "coiled_spring", "smart_money"]
+        # Only check regular screeners (Smart Money disabled)
+        screener_names = ["undiscovered", "coiled_spring"]
 
         for screener in screener_names:
             try:
@@ -101,7 +102,6 @@ class DailySummaryReport:
         """
         stats = {
             "regular_screeners": [],
-            "smart_money_screeners": [],
         }
 
         # Query Cloud Run Jobs API for execution history
@@ -133,27 +133,7 @@ class DailySummaryReport:
                 except Exception as e:
                     logger.warning(f"Could not fetch executions for batch {batch}: {e}")
 
-            # Get smart money screener jobs (batches 1-5)
-            for batch in range(1, 6):
-                job_name = f"projects/{self.project_id}/locations/{self.region}/jobs/prod-smart-money-screeners-batch-{batch}"
-
-                try:
-                    request = run_v2.ListExecutionsRequest(parent=job_name, page_size=5)
-                    executions = client.list_executions(request=request)
-
-                    for execution in executions:
-                        exec_date = execution.create_time.date().isoformat()
-                        if exec_date == date_str:
-                            stats["smart_money_screeners"].append({
-                                "batch": batch,
-                                "status": execution.succeeded,
-                                "start_time": execution.start_time,
-                                "completion_time": execution.completion_time,
-                            })
-                            break
-
-                except Exception as e:
-                    logger.warning(f"Could not fetch executions for SM batch {batch}: {e}")
+            # Smart Money screeners disabled - skipping
 
         except Exception as e:
             logger.error(f"Error fetching job execution stats: {e}")
@@ -214,11 +194,9 @@ class DailySummaryReport:
                 total_screened += data.get("total_screened", 0)
                 total_errors += data.get("failed_count", 0) + data.get("not_found_count", 0)
 
-        # Job execution summary
+        # Job execution summary (Regular screeners only)
         regular_success = sum(1 for job in job_stats.get("regular_screeners", []) if job.get("status"))
         regular_total = len(job_stats.get("regular_screeners", []))
-        smart_success = sum(1 for job in job_stats.get("smart_money_screeners", []) if job.get("status"))
-        smart_total = len(job_stats.get("smart_money_screeners", []))
 
         html = f"""
         <html>
@@ -275,8 +253,8 @@ class DailySummaryReport:
                     </tr>
         """
 
-        # Add screener rows
-        for screener_name in ["undiscovered", "coiled_spring", "smart_money"]:
+        # Add screener rows (Regular screeners only)
+        for screener_name in ["undiscovered", "coiled_spring"]:
             data = screener_results.get(screener_name)
             display_name = screener_name.replace("_", " ").title()
 
@@ -310,12 +288,11 @@ class DailySummaryReport:
 
                 <h2>⚙️ Job Execution Status</h2>
                 <p>
-                    <strong>Regular Screeners:</strong>
+                    <strong>Regular Screeners (Undiscovered + Coiled Spring):</strong>
                     <span class="status-badge badge-success">{}/{} batches successful</span>
                 </p>
-                <p>
-                    <strong>Smart Money Screeners:</strong>
-                    <span class="status-badge badge-success">{}/{} batches successful</span>
+                <p style="color: #7f8c8d; font-size: 14px;">
+                    <em>Note: Smart Money screeners temporarily disabled (moving to Polygon.io)</em>
                 </p>
 
                 <h2>🚫 Blacklist Statistics</h2>
@@ -339,7 +316,6 @@ class DailySummaryReport:
         </html>
         """.format(
             regular_success, regular_total,
-            smart_success, smart_total,
             blacklist_stats.get("total_blacklisted", 0),
             blacklist_stats.get("added_yesterday", 0),
             str(blacklist_stats.get("error_types", {}))
