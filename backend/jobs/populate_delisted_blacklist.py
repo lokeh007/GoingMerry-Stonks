@@ -221,12 +221,14 @@ class DelistedTickerScanner:
                 logger.info(f"  ETA: {eta_seconds/60:.1f} minutes")
                 logger.info("")
 
-        # Add delisted tickers to blacklist
+        # Add delisted tickers to blacklist (individually to preserve failure counts)
         if delisted_tickers and not self.dry_run:
             logger.info("")
             logger.info("=" * 80)
             logger.info(f"Adding {len(delisted_tickers)} delisted tickers to blacklist...")
-            self.delisted_cache.add_batch_to_blacklist(delisted_tickers, error_type="no_data")
+            logger.info("(Using individual adds to preserve failure counts)")
+            for ticker in delisted_tickers:
+                self.delisted_cache.add_to_blacklist(ticker, error_type="no_data")
             logger.info("✓ Blacklist updated")
         elif delisted_tickers and self.dry_run:
             logger.info("")
