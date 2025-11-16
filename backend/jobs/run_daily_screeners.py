@@ -89,9 +89,7 @@ class DailyScreenerJob:
         # Metrics tracking
         self.metrics = {
             'api_calls': 0,
-            'cache_hits': 0,
-            'start_time': None,
-            'wait_time': 0.0
+            'start_time': None
         }
 
         if batch_number:
@@ -340,7 +338,7 @@ class DailyScreenerJob:
         logger.info(f"  - API Calls: {screener_api_calls}")
         logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
         logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
-        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
+        logger.info(f"  - Tickers/Second: {(len(universe) / execution_time):.2f}" if execution_time > 0 else "  - Tickers/Second: 0.00")
 
         return {
             "screener_name": "The Undiscovered",
@@ -455,7 +453,7 @@ class DailyScreenerJob:
         logger.info(f"  - API Calls: {screener_api_calls}")
         logger.info(f"  - Actual Rate: {actual_rate:.2f} calls/min")
         logger.info(f"  - Rate Limit Utilization: {rate_utilization:.1f}%")
-        logger.info(f"  - Tickers/Second: {len(universe) / execution_time:.2f}")
+        logger.info(f"  - Tickers/Second: {(len(universe) / execution_time):.2f}" if execution_time > 0 else "  - Tickers/Second: 0.00")
 
         return {
             "screener_name": "The Coiled Spring",
