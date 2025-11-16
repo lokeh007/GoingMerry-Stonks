@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from google.cloud import firestore
 from app.services.yfinance_provider import YFinanceProvider
 from app.services.ticker_universe import TickerUniverseProvider
+from app.services.delisted_ticker_cache import DelistedTickerCache
 
 # Configure logging
 logging.basicConfig(
@@ -83,6 +84,7 @@ class SmartMoneyScreenerJob:
         # YFinanceProvider with increased rate limit (50 req/min for options flow - uses 5 calls per ticker)
         self.yf_provider = YFinanceProvider(max_requests_per_minute=50)
         self.ticker_provider = TickerUniverseProvider()
+        self.delisted_cache = DelistedTickerCache(ttl_days=30)  # Retry delisted after 30 days
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
@@ -329,6 +331,7 @@ class SmartMoneyScreenerJob:
             "total_screened": len(universe),
             "failed_count": len(failed_tickers),
             "not_found_count": len(not_found_tickers),
+            "not_found_tickers": not_found_tickers,  # Include list for blacklisting
             "execution_time_seconds": round(execution_time, 2),
             "parameters": {
                 "min_call_to_put_ratio": min_call_to_put_ratio,
@@ -447,14 +450,46 @@ class SmartMoneyScreenerJob:
             universe = self.get_full_exchange_universe()
             universe_elapsed = (datetime.now() - universe_start).total_seconds()
             logger.info(f"✓ Universe loaded in {universe_elapsed:.1f}s ({len(universe)} stocks)")
+
+            # Filter out blacklisted (delisted) tickers
+            logger.info("Step 1a: Filtering blacklisted tickers...")
+            blacklist_start = datetime.now()
+            original_count = len(universe)
+            universe = [ticker for ticker in universe if not self.delisted_cache.is_blacklisted(ticker)]
+            blacklisted_count = original_count - len(universe)
+            blacklist_elapsed = (datetime.now() - blacklist_start).total_seconds()
+
+            if blacklisted_count > 0:
+                logger.info(f"⊗ Skipped {blacklisted_count} blacklisted tickers (delisted/no data)")
+                logger.info(f"✓ Filtered in {blacklist_elapsed:.2f}s ({len(universe)} tickers remaining)")
+            else:
+                logger.info(f"✓ No blacklisted tickers to skip ({len(universe)} tickers to process)")
             logger.info("")
 
             # Run Smart Money screener only
             try:
                 results = self.run_smart_money_screener(universe)
 
+                # Add not_found tickers to blacklist
+                not_found_tickers = results.get("not_found_tickers", [])
+                if not_found_tickers:
+                    logger.info("")
+                    logger.info("Step 2: Adding delisted tickers to blacklist...")
+                    self.delisted_cache.add_batch_to_blacklist(not_found_tickers, error_type="no_data")
+                    logger.info(f"✓ Added {len(not_found_tickers)} tickers to blacklist (will skip in future runs)")
+
+                    # Log blacklist statistics
+                    stats = self.delisted_cache.get_statistics()
+                    logger.info(f"📊 Blacklist Statistics:")
+                    logger.info(f"  - Total Blacklisted: {stats.get('total_blacklisted', 0)}")
+                    logger.info(f"  - Error Types: {stats.get('error_types', {})}")
+                    logger.info("")
+
                 # Save to Firestore
-                self.save_to_firestore("smart_money", results)
+                # Remove not_found_tickers from results before saving (not needed in Firestore)
+                results_copy = results.copy()
+                results_copy.pop("not_found_tickers", None)
+                self.save_to_firestore("smart_money", results_copy)
 
             except Exception as e:
                 logger.error(f"✗ Failed to run smart_money screener: {e}")

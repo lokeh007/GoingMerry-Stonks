@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from google.cloud import firestore
 from app.services.yfinance_provider import YFinanceProvider
 from app.services.ticker_universe import TickerUniverseProvider
+from app.services.delisted_ticker_cache import DelistedTickerCache
 
 # Configure logging
 logging.basicConfig(
@@ -84,6 +85,7 @@ class DailyScreenerJob:
         # YFinanceProvider with increased rate limit (55 req/min, safe margin from 60 limit)
         self.yf_provider = YFinanceProvider(max_requests_per_minute=55)
         self.ticker_provider = TickerUniverseProvider()
+        self.delisted_cache = DelistedTickerCache(ttl_days=30)  # Retry delisted after 30 days
         self.run_timestamp = datetime.now(timezone.utc)
         self.batch_number = batch_number
 
@@ -905,6 +907,20 @@ class DailyScreenerJob:
             universe = self.get_full_exchange_universe()
             universe_elapsed = (datetime.now() - universe_start).total_seconds()
             logger.info(f"✓ Universe loaded in {universe_elapsed:.1f}s ({len(universe)} stocks)")
+
+            # Filter out blacklisted (delisted) tickers
+            logger.info("Step 1a: Filtering blacklisted tickers...")
+            blacklist_start = datetime.now()
+            original_count = len(universe)
+            universe = [ticker for ticker in universe if not self.delisted_cache.is_blacklisted(ticker)]
+            blacklisted_count = original_count - len(universe)
+            blacklist_elapsed = (datetime.now() - blacklist_start).total_seconds()
+
+            if blacklisted_count > 0:
+                logger.info(f"⊗ Skipped {blacklisted_count} blacklisted tickers (delisted/no data)")
+                logger.info(f"✓ Filtered in {blacklist_elapsed:.2f}s ({len(universe)} tickers remaining)")
+            else:
+                logger.info(f"✓ No blacklisted tickers to skip ({len(universe)} tickers to process)")
             logger.info("")
 
             # Screener parameters
@@ -996,6 +1012,19 @@ class DailyScreenerJob:
             logger.info(f"  - Tickers/Second: {(len(universe) / screening_elapsed):.2f}" if screening_elapsed > 0 else "  - Tickers/Second: 0.00")
             logger.info(f"  - Avg API Calls/Ticker: {(total_api_calls / len(universe)):.2f}" if len(universe) > 0 else "  - Avg API Calls/Ticker: 0.00")
             logger.info("=" * 80)
+
+            # Step 2a: Add not_found tickers to blacklist
+            if not_found_tickers:
+                logger.info("")
+                logger.info("Step 2a: Adding delisted tickers to blacklist...")
+                self.delisted_cache.add_batch_to_blacklist(not_found_tickers, error_type="no_data")
+                logger.info(f"✓ Added {len(not_found_tickers)} tickers to blacklist (will skip in future runs)")
+
+                # Log blacklist statistics
+                stats = self.delisted_cache.get_statistics()
+                logger.info(f"📊 Blacklist Statistics:")
+                logger.info(f"  - Total Blacklisted: {stats.get('total_blacklisted', 0)}")
+                logger.info(f"  - Error Types: {stats.get('error_types', {})}")
 
             # Step 3: Save results to Firestore
             logger.info("")

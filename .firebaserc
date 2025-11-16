@@ -1,5 +1,9 @@
 {
   "projects": {
-    "default": "goingmerry-stonks"
-  }
+    "default": "sylvan-earth-477020-u6",
+    "dev": "goingmerry-stonks",
+    "prod": "sylvan-earth-477020-u6"
+  },
+  "targets": {},
+  "etags": {}
 }
