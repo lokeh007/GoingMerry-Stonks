@@ -423,36 +423,39 @@ resource "google_cloud_scheduler_job" "trigger_regular_screeners_batch" {
 
 # ============================================================================
 # CLOUD SCHEDULER - Trigger Smart Money Screeners (5 Schedules)
+# DISABLED: Migrating to Polygon.io API - temporarily disabled
 # ============================================================================
 
-resource "google_cloud_scheduler_job" "trigger_smart_money_screeners_batch" {
-  for_each = local.smart_money_batches
-
-  name             = "${var.environment}-trigger-smart-money-screeners-${each.key}"
-  description      = "${each.value.description} at ${each.value.time_label} Tue-Sat"
-  schedule         = each.value.schedule
-  time_zone        = "America/New_York"
-  attempt_deadline = "1800s"  # Max allowed: 30 minutes (time for API call to complete, not job execution)
-  project          = var.project_id
-  region           = var.scheduler_region  # Use scheduler-specific region (us-east1)
-
-  retry_config {
-    retry_count = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
-  }
-
-  http_target {
-    http_method = "POST"
-    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.smart_money_screeners_batch[each.key].name}:run"
-
-    oauth_token {
-      service_account_email = var.service_account_email
-    }
-  }
-
-  depends_on = [
-    google_cloud_run_v2_job.smart_money_screeners_batch
-  ]
-}
+# COMMENTED OUT - Smart Money schedulers disabled (moving to Polygon.io)
+# Uncomment when ready to re-enable
+# resource "google_cloud_scheduler_job" "trigger_smart_money_screeners_batch" {
+#   for_each = local.smart_money_batches
+#
+#   name             = "${var.environment}-trigger-smart-money-screeners-${each.key}"
+#   description      = "${each.value.description} at ${each.value.time_label} Tue-Sat"
+#   schedule         = each.value.schedule
+#   time_zone        = "America/New_York"
+#   attempt_deadline = "1800s"  # Max allowed: 30 minutes (time for API call to complete, not job execution)
+#   project          = var.project_id
+#   region           = var.scheduler_region  # Use scheduler-specific region (us-east1)
+#
+#   retry_config {
+#     retry_count = 0  # Disabled - Let application-level retry logic (exponential backoff with jitter) handle failures
+#   }
+#
+#   http_target {
+#     http_method = "POST"
+#     uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${google_cloud_run_v2_job.smart_money_screeners_batch[each.key].name}:run"
+#
+#     oauth_token {
+#       service_account_email = var.service_account_email
+#     }
+#   }
+#
+#   depends_on = [
+#     google_cloud_run_v2_job.smart_money_screeners_batch
+#   ]
+# }
 
 # ============================================================================
 # IAM - Firestore Access for Jobs
@@ -477,15 +480,16 @@ resource "google_cloud_run_v2_job_iam_member" "regular_scheduler_invoker" {
 }
 
 # Grant Cloud Scheduler permission to invoke Smart Money screener jobs
-resource "google_cloud_run_v2_job_iam_member" "smart_money_scheduler_invoker" {
-  for_each = local.smart_money_batches
-
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_job.smart_money_screeners_batch[each.key].name
-  role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.service_account_email}"
-}
+# COMMENTED OUT - Disabled since Smart Money schedulers are disabled
+# resource "google_cloud_run_v2_job_iam_member" "smart_money_scheduler_invoker" {
+#   for_each = local.smart_money_batches
+#
+#   project  = var.project_id
+#   location = var.region
+#   name     = google_cloud_run_v2_job.smart_money_screeners_batch[each.key].name
+#   role     = "roles/run.invoker"
+#   member   = "serviceAccount:${var.service_account_email}"
+# }
 
 # ============================================================================
 # OUTPUTS
@@ -539,13 +543,14 @@ output "regular_scheduler_names" {
   }
 }
 
-output "smart_money_scheduler_names" {
-  description = "Cloud Scheduler job names for Smart Money screeners"
-  value = {
-    for key, scheduler in google_cloud_scheduler_job.trigger_smart_money_screeners_batch :
-    key => scheduler.name
-  }
-}
+# COMMENTED OUT - Smart Money schedulers disabled
+# output "smart_money_scheduler_names" {
+#   description = "Cloud Scheduler job names for Smart Money screeners"
+#   value = {
+#     for key, scheduler in google_cloud_scheduler_job.trigger_smart_money_screeners_batch :
+#     key => scheduler.name
+#   }
+# }
 
 output "regular_batch_info" {
   description = "Complete regular screener batch configuration"
@@ -561,16 +566,17 @@ output "regular_batch_info" {
   }
 }
 
-output "smart_money_batch_info" {
-  description = "Complete Smart Money screener batch configuration"
-  value = {
-    for key, batch in local.smart_money_batches :
-    key => {
-      batch_number = batch.number
-      schedule     = batch.schedule
-      time         = batch.time_label
-      job_name     = google_cloud_run_v2_job.smart_money_screeners_batch[key].name
-      scheduler    = google_cloud_scheduler_job.trigger_smart_money_screeners_batch[key].name
-    }
-  }
-}
+# COMMENTED OUT - Smart Money schedulers disabled
+# output "smart_money_batch_info" {
+#   description = "Complete Smart Money screener batch configuration"
+#   value = {
+#     for key, batch in local.smart_money_batches :
+#     key => {
+#       batch_number = batch.number
+#       schedule     = batch.schedule
+#       time         = batch.time_label
+#       job_name     = google_cloud_run_v2_job.smart_money_screeners_batch[key].name
+#       scheduler    = google_cloud_scheduler_job.trigger_smart_money_screeners_batch[key].name
+#     }
+#   }
+# }
