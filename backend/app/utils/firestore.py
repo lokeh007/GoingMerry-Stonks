@@ -58,8 +58,14 @@ def convert_numpy_types(obj: Any) -> Any:
     if isinstance(obj, list):
         return [convert_numpy_types(item) for item in obj]
 
-    # Handle None and NaN-like values (after collection types to avoid checking collections)
+    # Handle NumPy arrays BEFORE pd.isna() check (pd.isna returns array for arrays!)
+    # Recursively process elements to handle NaN values inside arrays
+    if isinstance(obj, np.ndarray):
+        return [convert_numpy_types(item) for item in obj.tolist()]
+
+    # Handle None and NaN-like values (AFTER array check to avoid ambiguous truth error)
     # pd.isna() handles: None, np.nan, pd.NA, pd.NaT, float('nan')
+    # NOTE: Must check arrays first to avoid "ambiguous truth value" error
     if pd.isna(obj):
         return None
 
@@ -81,10 +87,6 @@ def convert_numpy_types(obj: Any) -> Any:
         if np.isnan(obj):
             return None
         return float(obj)
-
-    # Handle NumPy arrays (convert to Python list, recursively process elements for NaN)
-    if isinstance(obj, np.ndarray):
-        return [convert_numpy_types(item) for item in obj.tolist()]
 
     # Handle Pandas Timestamps (convert to Python datetime)
     if isinstance(obj, pd.Timestamp):
