@@ -50,11 +50,6 @@ def convert_numpy_types(obj: Any) -> Any:
         >>> convert_numpy_types(pd.Timestamp("2023-01-01"))
         datetime.datetime(2023, 1, 1, 0, 0)
     """
-    # Handle None and NaN-like values FIRST (before type checking)
-    # pd.isna() handles: None, np.nan, pd.NA, pd.NaT, float('nan')
-    if pd.isna(obj):
-        return None
-
     # Handle dictionaries (recursively convert all values)
     if isinstance(obj, dict):
         return {key: convert_numpy_types(value) for key, value in obj.items()}
@@ -62,6 +57,11 @@ def convert_numpy_types(obj: Any) -> Any:
     # Handle lists (recursively convert all items)
     if isinstance(obj, list):
         return [convert_numpy_types(item) for item in obj]
+
+    # Handle None and NaN-like values (after collection types to avoid checking collections)
+    # pd.isna() handles: None, np.nan, pd.NA, pd.NaT, float('nan')
+    if pd.isna(obj):
+        return None
 
     # Handle NumPy boolean types
     if isinstance(obj, np.bool_):
@@ -82,9 +82,9 @@ def convert_numpy_types(obj: Any) -> Any:
             return None
         return float(obj)
 
-    # Handle NumPy arrays (convert to Python list)
+    # Handle NumPy arrays (convert to Python list, recursively process elements for NaN)
     if isinstance(obj, np.ndarray):
-        return obj.tolist()
+        return [convert_numpy_types(item) for item in obj.tolist()]
 
     # Handle Pandas Timestamps (convert to Python datetime)
     if isinstance(obj, pd.Timestamp):
