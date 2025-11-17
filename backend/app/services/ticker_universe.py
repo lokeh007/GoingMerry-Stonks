@@ -26,34 +26,37 @@ class TickerUniverseProvider:
         self.cache_timestamp: Dict[str, datetime] = {}
         self.cache_ttl = timedelta(hours=24)  # Refresh daily
 
-    def get_full_universe(
-        self,
-        min_market_cap: float = 100_000_000,  # $100M
-        min_volume: int = 100_000,  # 100K shares/day
-        min_price: float = 2.0,  # $2
-    ) -> List[str]:
+    def get_full_universe(self) -> List[str]:
         """
         Get full NYSE + NASDAQ universe with basic filters.
 
-        Args:
-            min_market_cap: Minimum market cap in dollars
-            min_volume: Minimum average daily volume
-            min_price: Minimum stock price
+        Sources:
+        - NASDAQ FTP (Global Select, Global, Capital markets only)
+        - NYSE FTP (NYSE, NYSE American, NYSE Arca only)
+
+        Filters applied:
+        - Removes test issues and delisted stocks
+        - Excludes ETFs (comprehensive whitelist)
+        - Excludes indexes, warrants, units, preferred stocks
+        - Excludes tickers with special characters or numbers
+        - Only includes legitimate major exchange listings
+
+        Note: Does NOT filter by market cap, volume, or price to avoid
+        expensive API calls. Use screening logic for those filters.
 
         Returns:
-            List of ticker symbols (~6000 stocks)
+            List of ticker symbols (~6000 stocks from major exchanges)
         """
         logger.info("Fetching full NYSE + NASDAQ universe...")
 
-        # Get tickers from multiple free sources
+        # Get tickers from major exchanges only (no OTC/pink sheets)
         nasdaq_tickers = self._get_nasdaq_listed()
         nyse_tickers = self._get_nyse_listed()
-        sec_tickers = self._get_sec_ticker_list()
 
-        # Combine and deduplicate
-        all_tickers = set(nasdaq_tickers + nyse_tickers + sec_tickers)
+        # Combine and deduplicate (removed SEC source - includes OTC/pink sheets)
+        all_tickers = set(nasdaq_tickers + nyse_tickers)
 
-        # Apply basic filters
+        # Apply basic filters (ETFs, warrants, preferred stocks, etc.)
         filtered_tickers = self._apply_basic_filters(list(all_tickers))
 
         logger.info(
