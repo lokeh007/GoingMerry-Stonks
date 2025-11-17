@@ -1067,8 +1067,8 @@ class DailyScreenerJob:
             not_found_tickers = []
             processed_count = 0
 
-            # Use ThreadPoolExecutor for parallel processing (6 workers = optimized)
-            with ThreadPoolExecutor(max_workers=6) as executor:
+            # Use ThreadPoolExecutor for parallel processing (12 workers for 2x throughput)
+            with ThreadPoolExecutor(max_workers=12) as executor:
                 # Submit all ticker processing tasks
                 future_to_ticker = {
                     executor.submit(
