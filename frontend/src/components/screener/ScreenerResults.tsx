@@ -59,7 +59,8 @@ const ScreenerResults: React.FC<ScreenerResultsProps> = ({
   /**
    * Get color class for score
    */
-  const getScoreClass = (score: number): string => {
+  const getScoreClass = (score: number | null | undefined): string => {
+    if (score === null || score === undefined) return 'score-poor';
     if (score >= 80) return 'score-excellent';
     if (score >= 60) return 'score-good';
     if (score >= 40) return 'score-fair';
@@ -159,7 +160,7 @@ const ScreenerResults: React.FC<ScreenerResultsProps> = ({
                     </td>
                     <td>
                       <span className={`score-badge ${getScoreClass(stock.score)}`}>
-                        {stock.score.toFixed(0)}
+                        {stock.score !== null && stock.score !== undefined ? stock.score.toFixed(0) : 'N/A'}
                       </span>
                     </td>
                   </tr>
