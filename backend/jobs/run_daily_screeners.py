@@ -28,7 +28,6 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import numpy as np
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +36,7 @@ from google.cloud import firestore
 from app.services.yfinance_provider import YFinanceProvider
 from app.services.ticker_universe import TickerUniverseProvider
 from app.services.delisted_ticker_cache import DelistedTickerCache
+from app.utils.firestore import convert_numpy_types
 
 # Configure logging
 logging.basicConfig(
@@ -66,35 +66,6 @@ class Suppress404Filter(logging.Filter):
 # Suppress yfinance ERROR logging for 404s only (preserves real errors)
 yf_logger = logging.getLogger('yfinance')
 yf_logger.addFilter(Suppress404Filter())
-
-
-def convert_numpy_types(obj: Any) -> Any:
-    """
-    Recursively convert numpy types to native Python types for Firestore compatibility.
-
-    Firestore cannot serialize numpy types (numpy.bool_, numpy.int64, numpy.float64, etc.).
-    This function ensures all values are native Python types before saving to Firestore.
-
-    Args:
-        obj: Object to convert (dict, list, or scalar)
-
-    Returns:
-        Object with all numpy types converted to Python types
-    """
-    if isinstance(obj, dict):
-        return {key: convert_numpy_types(value) for key, value in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_numpy_types(item) for item in obj]
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    elif isinstance(obj, (np.int8, np.int16, np.int32, np.int64)):
-        return int(obj)
-    elif isinstance(obj, (np.float16, np.float32, np.float64)):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    else:
-        return obj
 
 
 class DailyScreenerJob:
