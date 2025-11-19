@@ -40,11 +40,11 @@ Internet
     │
     └─ Batch Screeners: Cloud Run Jobs (Automated Daily, Sequential)
        ├─ Regular Screeners (Undiscovered + Coiled Spring, 60 req/min):
-       │  ├─ Batch 1: 4:30 PM ET → 6:00 PM (A-D, ~1200 stocks)
-       │  ├─ Batch 2: 6:00 PM ET → 7:30 PM (E-J, ~1200 stocks)
-       │  ├─ Batch 3: 7:30 PM ET → 9:00 PM (K-N, ~1200 stocks)
-       │  ├─ Batch 4: 9:00 PM ET → 10:30 PM (O-S, ~1200 stocks)
-       │  └─ Batch 5: 10:30 PM ET → 12:00 AM (T-Z, ~1200 stocks)
+       │  ├─ Batch 1: 4:30 PM ET → 6:00 PM (A to CURB, ~992 stocks)
+       │  ├─ Batch 2: 6:00 PM ET → 7:30 PM (CURV to GRNJ, ~992 stocks)
+       │  ├─ Batch 3: 7:30 PM ET → 9:00 PM (GRNT to MPU, ~992 stocks)
+       │  ├─ Batch 4: 9:00 PM ET → 10:30 PM (MPV to SFGV, ~992 stocks)
+       │  └─ Batch 5: 10:30 PM ET → 12:00 AM (SFL to ZWS, ~992 stocks)
        │
        ├─ Smart Money Screeners (Options Flow, 45 req/min):
        │  ├─ Batch 1: 12:00 AM ET → 2:00 AM (A-D, ~1200 stocks)

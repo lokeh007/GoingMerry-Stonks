@@ -8,12 +8,12 @@ universe (~6000 stocks) in 5 batches to respect yfinance rate limits.
 NOTE: Smart Money (options flow) screener runs separately in run_smart_money_screener.py
       due to higher API token consumption (45 req/min vs 60 req/min).
 
-Batch Schedule:
-- Batch 1: 4:30 PM ET - Tickers A-D (~1200 stocks)
-- Batch 2: 6:00 PM ET - Tickers E-J (~1200 stocks)
-- Batch 3: 7:30 PM ET - Tickers K-N (~1200 stocks)
-- Batch 4: 9:00 PM ET - Tickers O-S (~1200 stocks)
-- Batch 5: 10:30 PM ET - Tickers T-Z (~1200 stocks)
+Batch Schedule (Equal-sized for balanced processing):
+- Batch 1: 4:30 PM ET - Tickers A to CURB (~992 stocks)
+- Batch 2: 6:00 PM ET - Tickers CURV to GRNJ (~992 stocks)
+- Batch 3: 7:30 PM ET - Tickers GRNT to MPU (~992 stocks)
+- Batch 4: 9:00 PM ET - Tickers MPV to SFGV (~992 stocks)
+- Batch 5: 10:30 PM ET - Tickers SFL to ZWS (~992 stocks)
 
 Estimated runtime per batch: ~90 minutes
 Rate limit: 60 requests/minute
