@@ -93,15 +93,30 @@ analyze_batch() {
 
     # Get logs for screening results
     echo ""
-    echo "Screening Results:"
+    echo "Screening Results (Batch ${batch_num}):"
 
-    gcloud logging read \
+    # Try to get screening completion logs with increased limit
+    screening_logs=$(gcloud logging read \
         "resource.labels.job_name=${job_name} AND labels.\"run.googleapis.com/execution_name\"=${execution_id}" \
-        --limit=50 \
+        --limit=500 \
         --format="value(textPayload)" \
         --project=$PROJECT_ID 2>/dev/null | \
-        grep -E "Undiscovered:|Coiled Spring:|Not found|Failed \(errors\)|Total execution time|tickers screened" | \
-        head -10 || echo "  (No results found in logs)"
+        grep -E "✓ Undiscovered:|✓ Coiled Spring:|⚠ Not found|✗ Failed|Total execution time|Saved to Firestore" | \
+        tail -15)
+
+    if [ -n "$screening_logs" ]; then
+        echo "$screening_logs"
+    else
+        # Fallback: try different log format or newer logs
+        echo "  Fetching from alternative log source..."
+        gcloud logging read \
+            "resource.labels.job_name=${job_name} AND labels.\"run.googleapis.com/execution_name\"=${execution_id} AND textPayload:\"stocks passed\"" \
+            --limit=50 \
+            --format="value(textPayload)" \
+            --project=$PROJECT_ID 2>/dev/null | \
+            grep -E "Undiscovered|Coiled Spring|Not found|Failed" || echo "  ⚠️  Logs not available (may be expired or still indexing)"
+        echo "  💡 Use Python script for reliable results: python3 backend/jobs/analyze_daily_runs.py $DATE"
+    fi
 
     echo ""
     echo "Error Summary:"
@@ -130,14 +145,23 @@ analyze_batch() {
 }
 
 # Analyze all 5 batches
-analyze_batch 1 "A-D (~685 stocks)"
-analyze_batch 2 "E-J (~685 stocks)"
-analyze_batch 3 "K-N (~685 stocks)"
-analyze_batch 4 "O-S (~685 stocks)"
-analyze_batch 5 "T-Z (~685 stocks)"
+analyze_batch 1 "A to CURB (~992 stocks)"
+analyze_batch 2 "CURV to GRNJ (~992 stocks)"
+analyze_batch 3 "GRNT to MPU (~992 stocks)"
+analyze_batch 4 "MPV to SFGV (~992 stocks)"
+analyze_batch 5 "SFL to ZWS (~992 stocks)"
 
 echo "================================================================================"
 echo "SUMMARY COMPLETE"
+echo "================================================================================"
+echo ""
+echo "📊 For aggregated screening results across all batches, use:"
+echo "  python3 backend/jobs/analyze_daily_runs.py $DATE"
+echo ""
+echo "This Python script queries Firestore directly for more reliable results."
+echo ""
+echo "================================================================================"
+echo "OTHER USEFUL COMMANDS"
 echo "================================================================================"
 echo ""
 echo "For detailed logs of a specific batch, run:"
