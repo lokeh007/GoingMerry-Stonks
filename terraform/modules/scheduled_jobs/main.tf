@@ -5,21 +5,21 @@
 # - 5 jobs for Smart Money Screener (Options Flow)
 #
 # Regular Screeners (50 req/min, ~2-3 API calls per ticker):
-# NOTE: Current runtime ~10-12 hours due to retry backoff (Phase 2 optimization will reduce to ~2 hours)
-# - Batch 1: 4:30 PM ET (A-D, ~1200 stocks) → finishes ~3:00 AM (~10.5 hours)
-# - Batch 2: 6:00 PM ET (E-J, ~1200 stocks) → finishes ~4:30 AM (~10.5 hours)
-# - Batch 3: 7:30 PM ET (K-N, ~1200 stocks) → finishes ~6:00 AM (~10.5 hours)
-# - Batch 4: 9:00 PM ET (O-S, ~1200 stocks) → finishes ~7:30 AM (~10.5 hours)
-# - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes ~9:00 AM (~10.5 hours)
+# NOTE: Current runtime ~95 minutes per batch (optimized with efficient retry logic)
+# - Batch 1: 4:30 PM ET (A-D, ~1200 stocks) → finishes ~6:05 PM (~95 min)
+# - Batch 2: 6:00 PM ET (E-J, ~1200 stocks) → finishes ~7:35 PM (~95 min)
+# - Batch 3: 7:30 PM ET (K-N, ~1200 stocks) → finishes ~9:05 PM (~95 min)
+# - Batch 4: 9:00 PM ET (O-S, ~1200 stocks) → finishes ~10:35 PM (~95 min)
+# - Batch 5: 10:30 PM ET (T-Z, ~1200 stocks) → finishes ~12:05 AM (~95 min)
 #
 # Smart Money Screeners (36 req/min, ~3 API calls per ticker: 2 option expiries + fundamentals):
-# NOTE: May overlap with slow Regular screeners (Phase 2 optimization will eliminate overlap)
-# Current schedule optimized for non-overlapping execution AFTER optimization
-# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes ~1:55 AM (~1h 40min) [May overlap with Regular Batch 1]
-# - Batch 2: 2:30 AM ET (E-J, ~1200 stocks) → finishes ~4:10 AM (~1h 40min) [May overlap with Regular Batch 1-2]
-# - Batch 3: 5:00 AM ET (K-N, ~1200 stocks) → finishes ~6:40 AM (~1h 40min) [May overlap with Regular Batch 2-3]
-# - Batch 4: 7:30 AM ET (O-S, ~1200 stocks) → finishes ~9:10 AM (~1h 40min) [May overlap with Regular Batch 3-4]
-# - Batch 5: 10:00 AM ET (T-Z, ~1200 stocks) → finishes ~11:40 AM (~1h 40min) [May overlap with Regular Batch 4-5]
+# NOTE: No overlap with Regular screeners (Regular: ~95 min, Smart Money: ~100 min per batch)
+# Schedule designed for sequential execution after Regular screeners complete
+# - Batch 1: 12:15 AM ET (A-D, ~1200 stocks) → finishes ~1:55 AM (~100 min)
+# - Batch 2: 2:30 AM ET (E-J, ~1200 stocks) → finishes ~4:10 AM (~100 min)
+# - Batch 3: 5:00 AM ET (K-N, ~1200 stocks) → finishes ~6:40 AM (~100 min)
+# - Batch 4: 7:30 AM ET (O-S, ~1200 stocks) → finishes ~9:10 AM (~100 min)
+# - Batch 5: 10:00 AM ET (T-Z, ~1200 stocks) → finishes ~11:40 AM (~100 min)
 
 terraform {
   required_version = ">= 1.0"
@@ -76,19 +76,19 @@ variable "job_schedule" {
 variable "job_timeout" {
   description = "Job execution timeout in seconds (per batch)"
   type        = number
-  default     = 43200  # 12 hours (Phase 1: Safety net for slow retry backoff. Phase 2 optimization will reduce actual runtime to ~2 hours)
+  default     = 10800  # 3 hours (actual runtime ~95 minutes, with buffer for occasional delays)
 }
 
 variable "job_memory" {
   description = "Memory allocation for job"
   type        = string
-  default     = "2Gi"
+  default     = "1Gi"
 }
 
 variable "job_cpu" {
   description = "CPU allocation for job"
   type        = string
-  default     = "2"
+  default     = "1"
 }
 
 variable "docker_image" {
