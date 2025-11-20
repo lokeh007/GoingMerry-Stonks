@@ -129,6 +129,13 @@ locals {
       time_label  = "10:30 PM ET"
     }
   }
+
+  # Filter batches based on enable_batches variable (for phased rollout)
+  enabled_batches = {
+    for key, config in local.regular_batches :
+    key => config
+    if lookup(var.enable_batches, key, false)
+  }
 }
 
 # ============================================================================
@@ -136,7 +143,7 @@ locals {
 # ============================================================================
 
 resource "google_batch_job" "regular_screeners_batch" {
-  for_each = local.regular_batches
+  for_each = local.enabled_batches
 
   name     = "${var.environment}-regular-screeners-${each.key}"
   location = var.region
@@ -249,7 +256,7 @@ resource "google_batch_job" "regular_screeners_batch" {
 # the scheduler request and calls the Cloud Batch API.
 
 resource "google_cloud_scheduler_job" "trigger_regular_screeners_batch" {
-  for_each = local.regular_batches
+  for_each = local.enabled_batches
 
   name             = "${var.environment}-trigger-batch-regular-screeners-${each.key}"
   description      = "${each.value.description} at ${each.value.time_label} Mon-Fri"
@@ -348,7 +355,7 @@ output "scheduler_names" {
 output "batch_info" {
   description = "Complete batch configuration"
   value = {
-    for key, batch in local.regular_batches :
+    for key, batch in local.enabled_batches :
     key => {
       batch_number = batch.number
       schedule     = batch.schedule
