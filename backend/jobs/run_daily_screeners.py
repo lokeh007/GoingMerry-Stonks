@@ -803,6 +803,10 @@ class DailyScreenerJob:
         Each batch saves to a separate document to preserve individual batch results.
         Document path includes batch number for tracking and aggregation.
 
+        Document ID format:
+        - Batch mode: {date}-batch-{N} (e.g., "2025-11-19-batch-1")
+        - Legacy mode: {date} (e.g., "2025-11-19")
+
         Args:
             screener_name: Name of screener (undiscovered, coiled_spring)
             data: Screener results and metadata
@@ -810,9 +814,16 @@ class DailyScreenerJob:
         logger.info(f"Saving {screener_name} results to Firestore...")
 
         try:
-            # Document path: screeners/{screener_name}/runs/{date}-batch-{batch_number}
+            # Document path: screeners/{screener_name}/runs/{doc_id}
             date_str = self.run_timestamp.strftime("%Y-%m-%d")
-            doc_id = f"{date_str}-batch-{self.batch_number}"
+
+            # Handle batch number gracefully
+            if self.batch_number is not None:
+                doc_id = f"{date_str}-batch-{self.batch_number}"
+            else:
+                # Legacy mode: use date only (no batch suffix)
+                doc_id = date_str
+
             doc_ref = (
                 self.db
                 .collection("screeners")
@@ -824,8 +835,9 @@ class DailyScreenerJob:
             # Convert numpy types to Python types before saving (Firestore compatibility)
             sanitized_data = convert_numpy_types(data)
 
-            # Add batch number to metadata
-            sanitized_data["batch_number"] = self.batch_number
+            # Only add batch_number to metadata if it exists
+            if self.batch_number is not None:
+                sanitized_data["batch_number"] = self.batch_number
 
             # Save results
             doc_ref.set(sanitized_data)
