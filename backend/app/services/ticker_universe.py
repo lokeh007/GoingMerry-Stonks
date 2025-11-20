@@ -70,46 +70,52 @@ class TickerUniverseProvider:
         """
         Get ticker universe for a specific batch (1, 2, 3, 4, or 5).
 
-        Splits alphabetically:
-        - Batch 1: A-D (~1200 stocks)
-        - Batch 2: E-J (~1200 stocks)
-        - Batch 3: K-N (~1200 stocks)
-        - Batch 4: O-S (~1200 stocks)
-        - Batch 5: T-Z (~1200 stocks)
+        Splits into equal-sized batches for balanced processing:
+        - Each batch: ~990 stocks (4,960 total / 5 batches)
+        - Ensures all batches complete within 90-minute window
+        - Sorted alphabetically, then split by count (not by letter ranges)
+
+        Previous approach (alphabetical ranges A-D, E-J, etc.) resulted in
+        unbalanced batches: Batch 1 had 1,262 stocks while Batch 3 had only 685.
 
         Args:
             batch_number: Batch number (1, 2, 3, 4, or 5)
 
         Returns:
-            List of ticker symbols for this batch (~1200 stocks)
+            List of ticker symbols for this batch (~990 stocks each)
         """
         if batch_number not in [1, 2, 3, 4, 5]:
             raise ValueError(f"batch_number must be 1, 2, 3, 4, or 5. Got: {batch_number}")
 
-        # Get full universe
+        # Get full universe (sorted alphabetically)
         full_universe = self.get_full_universe()
+        total_tickers = len(full_universe)
 
-        # Split alphabetically into 5 batches
-        batch_ranges = {
-            1: ("A", "D"),  # A-D
-            2: ("E", "J"),  # E-J
-            3: ("K", "N"),  # K-N
-            4: ("O", "S"),  # O-S
-            5: ("T", "Z"),  # T-Z
-        }
+        # Calculate equal chunk size
+        chunk_size = total_tickers // 5
+        remainder = total_tickers % 5
 
-        start_letter, end_letter = batch_ranges[batch_number]
+        # Calculate start and end indices for this batch
+        # Distribute remainder across first batches to balance evenly
+        if batch_number <= remainder:
+            # First 'remainder' batches get one extra ticker
+            start_idx = (batch_number - 1) * (chunk_size + 1)
+            end_idx = start_idx + chunk_size + 1
+        else:
+            # Remaining batches get standard chunk size
+            start_idx = remainder * (chunk_size + 1) + (batch_number - remainder - 1) * chunk_size
+            end_idx = start_idx + chunk_size
 
-        # Filter tickers in range
-        batch_tickers = [
-            ticker
-            for ticker in full_universe
-            if start_letter <= ticker[0].upper() <= end_letter
-        ]
+        # Extract batch
+        batch_tickers = full_universe[start_idx:end_idx]
+
+        # Get ticker range for logging (first and last ticker)
+        first_ticker = batch_tickers[0] if batch_tickers else "N/A"
+        last_ticker = batch_tickers[-1] if batch_tickers else "N/A"
 
         logger.info(
-            f"Batch {batch_number} ({start_letter}-{end_letter}): "
-            f"{len(batch_tickers)} stocks"
+            f"Batch {batch_number}: {len(batch_tickers)} stocks "
+            f"({first_ticker} to {last_ticker})"
         )
 
         return batch_tickers

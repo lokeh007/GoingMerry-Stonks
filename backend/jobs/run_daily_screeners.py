@@ -8,12 +8,12 @@ universe (~6000 stocks) in 5 batches to respect yfinance rate limits.
 NOTE: Smart Money (options flow) screener runs separately in run_smart_money_screener.py
       due to higher API token consumption (45 req/min vs 60 req/min).
 
-Batch Schedule:
-- Batch 1: 4:30 PM ET - Tickers A-D (~1200 stocks)
-- Batch 2: 6:00 PM ET - Tickers E-J (~1200 stocks)
-- Batch 3: 7:30 PM ET - Tickers K-N (~1200 stocks)
-- Batch 4: 9:00 PM ET - Tickers O-S (~1200 stocks)
-- Batch 5: 10:30 PM ET - Tickers T-Z (~1200 stocks)
+Batch Schedule (Equal-sized for balanced processing):
+- Batch 1: 4:30 PM ET - Tickers A to CURB (~992 stocks)
+- Batch 2: 6:00 PM ET - Tickers CURV to GRNJ (~992 stocks)
+- Batch 3: 7:30 PM ET - Tickers GRNT to MPU (~992 stocks)
+- Batch 4: 9:00 PM ET - Tickers MPV to SFGV (~992 stocks)
+- Batch 5: 10:30 PM ET - Tickers SFL to ZWS (~992 stocks)
 
 Estimated runtime per batch: ~90 minutes
 Rate limit: 60 requests/minute
@@ -798,7 +798,10 @@ class DailyScreenerJob:
 
     def save_to_firestore(self, screener_name: str, data: Dict[str, Any]):
         """
-        Save screener results to Firestore.
+        Save screener results to Firestore with batch-specific document path.
+
+        Each batch saves to a separate document to preserve individual batch results.
+        Document path includes batch number for tracking and aggregation.
 
         Args:
             screener_name: Name of screener (undiscovered, coiled_spring)
@@ -807,23 +810,27 @@ class DailyScreenerJob:
         logger.info(f"Saving {screener_name} results to Firestore...")
 
         try:
-            # Document path: screeners/{screener_name}/runs/{date}
+            # Document path: screeners/{screener_name}/runs/{date}-batch-{batch_number}
             date_str = self.run_timestamp.strftime("%Y-%m-%d")
+            doc_id = f"{date_str}-batch-{self.batch_number}"
             doc_ref = (
                 self.db
                 .collection("screeners")
                 .document(screener_name)
                 .collection("runs")
-                .document(date_str)
+                .document(doc_id)
             )
 
             # Convert numpy types to Python types before saving (Firestore compatibility)
             sanitized_data = convert_numpy_types(data)
 
+            # Add batch number to metadata
+            sanitized_data["batch_number"] = self.batch_number
+
             # Save results
             doc_ref.set(sanitized_data)
 
-            logger.info(f"✓ Saved to Firestore: screeners/{screener_name}/runs/{date_str}")
+            logger.info(f"✓ Saved to Firestore: screeners/{screener_name}/runs/{doc_id}")
 
             # Cleanup old runs (keep last 30 days)
             self._cleanup_old_runs(screener_name, days=30)

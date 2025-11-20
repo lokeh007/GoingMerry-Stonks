@@ -101,7 +101,6 @@ gcloud run jobs create prod-daily-summary-report \
     --task-timeout=10m \
     --memory=512Mi \
     --cpu=1 \
-    --execute-now=false \
     --command=$(echo $CMD_ARGS | tr ',' '\n' | paste -sd, -) \
     --quiet
 
