@@ -27,68 +27,7 @@ terraform {
 # ============================================================================
 # VARIABLES
 # ============================================================================
-
-variable "project_id" {
-  description = "GCP Project ID"
-  type        = string
-}
-
-variable "region" {
-  description = "GCP region for Cloud Batch jobs"
-  type        = string
-  default     = "us-east5"
-}
-
-variable "scheduler_region" {
-  description = "GCP region for Cloud Scheduler"
-  type        = string
-  default     = "us-east1"
-}
-
-variable "environment" {
-  description = "Environment name (prod, staging, dev)"
-  type        = string
-}
-
-variable "service_account_email" {
-  description = "Service account email for Cloud Batch jobs"
-  type        = string
-}
-
-variable "polygon_api_key_secret" {
-  description = "Secret Manager resource ID for Polygon API key"
-  type        = string
-}
-
-variable "docker_image" {
-  description = "Docker image for regular screeners"
-  type        = string
-  default     = "us-east5-docker.pkg.dev/sylvan-earth-477020-u6/prod-backend/daily-screeners:latest"
-}
-
-variable "job_timeout_seconds" {
-  description = "Job execution timeout in seconds"
-  type        = number
-  default     = 10800  # 3 hours
-}
-
-variable "vm_machine_type" {
-  description = "Machine type for Spot VMs"
-  type        = string
-  default     = "e2-medium"  # 2 vCPU, 4GB memory
-}
-
-variable "vpc_network" {
-  description = "VPC network for Cloud Batch (optional, uses default if not specified)"
-  type        = string
-  default     = ""
-}
-
-variable "vpc_subnetwork" {
-  description = "VPC subnetwork for Cloud Batch (optional)"
-  type        = string
-  default     = ""
-}
+# Variables are defined in variables.tf
 
 # ============================================================================
 # LOCALS - Batch Configuration
@@ -327,41 +266,4 @@ resource "google_project_iam_member" "artifact_reader" {
 # ============================================================================
 # OUTPUTS
 # ============================================================================
-
-output "batch_job_names" {
-  description = "Cloud Batch job names for regular screeners"
-  value = {
-    for key, job in google_batch_job.regular_screeners_batch :
-    key => job.name
-  }
-}
-
-output "batch_job_ids" {
-  description = "Cloud Batch job IDs for monitoring"
-  value = {
-    for key, job in google_batch_job.regular_screeners_batch :
-    key => job.id
-  }
-}
-
-output "scheduler_names" {
-  description = "Cloud Scheduler job names"
-  value = {
-    for key, scheduler in google_cloud_scheduler_job.trigger_regular_screeners_batch :
-    key => scheduler.name
-  }
-}
-
-output "batch_info" {
-  description = "Complete batch configuration"
-  value = {
-    for key, batch in local.enabled_batches :
-    key => {
-      batch_number = batch.number
-      schedule     = batch.schedule
-      time         = batch.time_label
-      job_name     = google_batch_job.regular_screeners_batch[key].name
-      scheduler    = google_cloud_scheduler_job.trigger_regular_screeners_batch[key].name
-    }
-  }
-}
+# Outputs are defined in outputs.tf

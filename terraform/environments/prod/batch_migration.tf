@@ -1,18 +1,30 @@
 # Cloud Batch Migration Configuration
 #
-# This file manages the phased migration from Cloud Run Jobs to Cloud Batch + Spot VMs.
+# ⚠️ TERRAFORM DEPLOYMENT TEMPORARILY DISABLED ⚠️
 #
-# MIGRATION PHASES:
+# Cloud Batch resources are not yet fully supported in the Terraform Google provider.
+# The google_batch_job resource type doesn't exist in the current provider version.
+#
+# ALTERNATIVE APPROACH: Manual Deployment with gcloud
+# See: docs/CLOUD_BATCH_MANUAL_DEPLOY.md for complete guide
+#
+# Quick Start:
+# 1. ./scripts/deploy-cloud-batch-test.sh 1  # Deploy batch 1 for testing
+# 2. ./scripts/monitor-cloud-batch.sh        # Monitor job status
+# 3. python3 backend/jobs/analyze_daily_runs.py  # Check results
+#
+# Once Cloud Batch is validated via manual deployment, we can:
+# - Keep it manual (simple, works now)
+# - Wait for Terraform provider support
+# - Use null_resource + gcloud in Terraform (hybrid approach)
+#
+# ---
+#
+# ORIGINAL MIGRATION PLAN (for future reference):
 # Phase 1 (Week 1): Enable batch-1 only (pilot)
 # Phase 2 (Week 2): Enable batch-1, batch-2, batch-3 (60% migration)
 # Phase 3 (Week 3): Enable all 5 batches (100% migration)
 # Phase 4 (Week 4): Decommission Cloud Run Jobs
-#
-# INSTRUCTIONS:
-# 1. Uncomment the module block below to enable Cloud Batch
-# 2. Use enable_batches variable to control which batches are active
-# 3. Monitor both systems in parallel during migration
-# 4. Once validated, disable Cloud Run schedulers in scheduled_jobs module
 
 # ============================================================================
 # PHASE 1: PILOT (BATCH 1 ONLY)

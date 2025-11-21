@@ -27,7 +27,7 @@ output "scheduler_names" {
 output "batch_info" {
   description = "Complete batch configuration including schedules and job names"
   value = {
-    for key, batch in local.regular_batches :
+    for key, batch in local.enabled_batches :
     key => {
       batch_number    = batch.number
       schedule        = batch.schedule
