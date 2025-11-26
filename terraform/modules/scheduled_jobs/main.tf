@@ -82,7 +82,7 @@ variable "job_timeout" {
 variable "job_memory" {
   description = "Memory allocation for job"
   type        = string
-  default     = "1Gi"
+  default     = "512Mi"  # Reduced from 1Gi for cost optimization (testing)
 }
 
 variable "job_cpu" {
