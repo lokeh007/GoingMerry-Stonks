@@ -146,16 +146,16 @@ const ScreenerResults: React.FC<ScreenerResultsProps> = ({
                     <td>{stock.sector || 'N/A'}</td>
                     <td>{formatNumber(stock.market_cap, 0)}</td>
                     <td>{formatNumber(stock.price)}</td>
-                    <td className={stock.peg_ratio && stock.peg_ratio < 1 ? 'value-good' : ''}>
+                    <td className={stock.peg_ratio != null && stock.peg_ratio < 1 ? 'value-good' : ''}>
                       {stock.peg_ratio != null ? stock.peg_ratio.toFixed(2) : 'N/A'}
                     </td>
-                    <td className={stock.earnings_growth && stock.earnings_growth > 15 ? 'value-good' : ''}>
+                    <td className={stock.earnings_growth != null && stock.earnings_growth > 15 ? 'value-good' : ''}>
                       {formatPercent(stock.earnings_growth)}
                     </td>
-                    <td className={stock.debt_to_equity && stock.debt_to_equity < 0.5 ? 'value-good' : ''}>
+                    <td className={stock.debt_to_equity != null && stock.debt_to_equity < 0.5 ? 'value-good' : ''}>
                       {stock.debt_to_equity != null ? stock.debt_to_equity.toFixed(2) : 'N/A'}
                     </td>
-                    <td className={stock.roe && stock.roe > 15 ? 'value-good' : ''}>
+                    <td className={stock.roe != null && stock.roe > 15 ? 'value-good' : ''}>
                       {formatPercent(stock.roe)}
                     </td>
                     <td>
