@@ -1037,7 +1037,7 @@ class DailyScreenerJob:
         logger.info("Screeners: The Undiscovered, The Coiled Spring")
         logger.info(f"Timestamp: {self.run_timestamp}")
         logger.info("Rate limiting: 58 req/min with adaptive exponential backoff")
-        logger.info("Parallel processing: 6 concurrent workers (shared data optimization)")
+        logger.info("Parallel processing: 12 concurrent workers (shared data optimization)")
         logger.info("=" * 80)
 
         try:

@@ -175,8 +175,8 @@ module "scheduled_jobs" {
 
   # Resource allocation for processing ~6000 stocks
   job_timeout = 10800  # 3 hours (increased for Quick Win - will reduce with parallel processing)
-  job_memory  = "2Gi"
-  job_cpu     = "2"
+  job_memory  = "512Mi"  # TESTING: Reduced from 2Gi for cost optimization
+  job_cpu     = "1"      # TESTING: Reduced from 2 to match memory reduction
 
   depends_on = [
     google_project_service.required_apis,
