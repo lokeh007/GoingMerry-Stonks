@@ -147,20 +147,20 @@ const ScreenerResults: React.FC<ScreenerResultsProps> = ({
                     <td>{formatNumber(stock.market_cap, 0)}</td>
                     <td>{formatNumber(stock.price)}</td>
                     <td className={stock.peg_ratio != null && stock.peg_ratio < 1 ? 'value-good' : ''}>
-                      {stock.peg_ratio != null ? stock.peg_ratio.toFixed(2) : 'N/A'}
+                      {stock.peg_ratio?.toFixed(2) ?? 'N/A'}
                     </td>
                     <td className={stock.earnings_growth != null && stock.earnings_growth > 15 ? 'value-good' : ''}>
                       {formatPercent(stock.earnings_growth)}
                     </td>
                     <td className={stock.debt_to_equity != null && stock.debt_to_equity < 0.5 ? 'value-good' : ''}>
-                      {stock.debt_to_equity != null ? stock.debt_to_equity.toFixed(2) : 'N/A'}
+                      {stock.debt_to_equity?.toFixed(2) ?? 'N/A'}
                     </td>
                     <td className={stock.roe != null && stock.roe > 15 ? 'value-good' : ''}>
                       {formatPercent(stock.roe)}
                     </td>
                     <td>
                       <span className={`score-badge ${getScoreClass(stock.score)}`}>
-                        {stock.score !== null && stock.score !== undefined ? stock.score.toFixed(0) : 'N/A'}
+                        {stock.score?.toFixed(0) ?? 'N/A'}
                       </span>
                     </td>
                   </tr>
