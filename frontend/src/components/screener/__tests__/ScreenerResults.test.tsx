@@ -348,7 +348,7 @@ describe('ScreenerResults', () => {
       expect(egCell).toHaveTextContent('20.0%');
     });
 
-    it('should apply value-good class when earnings_growth is exactly 15 (threshold)', () => {
+    it('should NOT apply value-good class when earnings_growth equals threshold (15)', () => {
       const mockStock: Partial<StockScreenerResult> = {
         ticker: 'THRESH',
         company_name: 'Threshold Growth Corp.',
@@ -495,7 +495,7 @@ describe('ScreenerResults', () => {
       expect(roeCell).toHaveTextContent('20.0%');
     });
 
-    it('should apply value-good class when roe is exactly 15 (threshold)', () => {
+    it('should NOT apply value-good class when roe equals threshold (15)', () => {
       const mockStock: Partial<StockScreenerResult> = {
         ticker: 'THRESH',
         company_name: 'Threshold ROE Corp.',
