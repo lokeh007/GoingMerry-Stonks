@@ -178,7 +178,7 @@ module "scheduled_jobs" {
   # - Observed peak memory: ~300Mi (512Mi provides 70% headroom)
   # - CPU utilization: <50% sustained at 1 core
   # - Zero OOM errors or rate limit issues over 2-week validation period
-  # - Cost reduction: ~60% vs original allocation (2Gi/2CPU)
+  # - Cost reduction: ~52% vs original allocation (2Gi/2CPU)
   job_timeout = 10800   # 3 hours (actual runtime ~95 min/batch with buffer)
   job_memory  = "512Mi" # Right-sized from 2Gi after production profiling
   job_cpu     = "1"     # Right-sized from 2 cores after production profiling
