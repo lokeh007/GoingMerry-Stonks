@@ -1,0 +1,47 @@
+{
+  "extends": [
+    "react-app",
+    "react-app/jest"
+  ],
+  "rules": {
+    // Enforce explicit null/undefined checks to prevent falsy-value bugs
+    "eqeqeq": [
+      "error",
+      "always",
+      {
+        "null": "ignore"
+      }
+    ],
+    // Warn about expressions that always evaluate to truthy or falsy
+    "@typescript-eslint/strict-boolean-expressions": [
+      "warn",
+      {
+        "allowString": false,
+        "allowNumber": false,
+        "allowNullableObject": false,
+        "allowNullableBoolean": false,
+        "allowNullableString": false,
+        "allowNullableNumber": false,
+        "allowAny": false
+      }
+    ],
+    // Prevent unnecessary boolean casts that might hide logic errors
+    "no-extra-boolean-cast": "error",
+    // Warn about constant conditions that might indicate logic errors
+    "no-constant-condition": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["*.tsx", "*.ts"],
+      "rules": {
+        // TypeScript-specific rules for better type safety
+        "@typescript-eslint/no-unnecessary-condition": [
+          "warn",
+          {
+            "allowConstantLoopConditions": true
+          }
+        ]
+      }
+    }
+  ]
+}
