@@ -19,6 +19,9 @@ import { ScreenerResponse, StockScreenerResult, LynchCategory } from '../../../t
 describe('ScreenerResults', () => {
   /**
    * Helper function to create mock screener response
+   *
+   * Note: score is REQUIRED (non-nullable) as the backend always calculates and returns it.
+   * The backend Pydantic model enforces: score: float = Field(..., ge=0, le=100)
    */
   const createMockResponse = (results: Partial<StockScreenerResult>[]): ScreenerResponse => {
     const completeResults: StockScreenerResult[] = results.map((partial) => ({
@@ -35,7 +38,7 @@ describe('ScreenerResults', () => {
       current_ratio: partial.current_ratio,
       roe: partial.roe,
       institutional_ownership: partial.institutional_ownership,
-      score: partial.score || 70,
+      score: partial.score !== undefined ? partial.score : 70,
       reasons: partial.reasons || ['Test reason'],
     }));
 
@@ -834,6 +837,139 @@ describe('ScreenerResults', () => {
 
       const scoreBadge = container.querySelector('.score-badge');
       expect(scoreBadge).toHaveClass('score-poor');
+    });
+  });
+
+  describe('Score Display and Edge Cases', () => {
+    it('should display score 0 (minimum valid score)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'ZERO',
+        company_name: 'Zero Score Corp.',
+        score: 0,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('0');
+      expect(scoreBadge).toHaveClass('score-poor');
+    });
+
+    it('should display score 100 (maximum valid score)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'PERFECT',
+        company_name: 'Perfect Score Corp.',
+        score: 100,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('100');
+      expect(scoreBadge).toHaveClass('score-excellent');
+    });
+
+    it('should display score at boundary 40 (fair threshold)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'BOUND40',
+        company_name: 'Boundary 40 Corp.',
+        score: 40,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('40');
+      expect(scoreBadge).toHaveClass('score-fair');
+    });
+
+    it('should display score at boundary 60 (good threshold)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'BOUND60',
+        company_name: 'Boundary 60 Corp.',
+        score: 60,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('60');
+      expect(scoreBadge).toHaveClass('score-good');
+    });
+
+    it('should display score at boundary 80 (excellent threshold)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'BOUND80',
+        company_name: 'Boundary 80 Corp.',
+        score: 80,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('80');
+      expect(scoreBadge).toHaveClass('score-excellent');
+    });
+
+    it('should display score with no decimal places (integer formatting)', () => {
+      const mockStock: Partial<StockScreenerResult> = {
+        ticker: 'DECIMAL',
+        company_name: 'Decimal Score Corp.',
+        score: 75.8,
+      };
+
+      const { container } = render(
+        <ScreenerResults
+          response={createMockResponse([mockStock])}
+          loading={false}
+          currentPage={1}
+          pageSize={10}
+          onPageChange={() => {}}
+        />
+      );
+
+      const scoreBadge = container.querySelector('.score-badge');
+      expect(scoreBadge).toHaveTextContent('76'); // Rounded to nearest integer
     });
   });
 });
