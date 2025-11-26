@@ -140,9 +140,11 @@ const count: number = 5;
 // ✅ CORRECT: Safe property access
 const marketCap = stock?.financials?.market_cap ?? 0;
 
-// ✅ CORRECT: Distinguish null/undefined from 0
-const price = stock.price ?? 'N/A';  // Only replaces null/undefined, not 0
-const price = stock.price || 'N/A';  // ❌ WRONG: Replaces 0 as well!
+// ✅ CORRECT: Only replaces null/undefined and formats for display
+const priceDisplay = stock.price != null ? formatPrice(stock.price) : 'N/A'; // 0 is formatted, null/undefined becomes 'N/A'
+
+// ❌ WRONG: OR operator replaces 0 as well!
+const priceDisplay = stock.price ? formatPrice(stock.price) : 'N/A';  // BUG: 0 becomes 'N/A'!
 ```
 
 ---
