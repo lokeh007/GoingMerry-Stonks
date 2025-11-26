@@ -3,6 +3,9 @@
     "react-app",
     "react-app/jest"
   ],
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
   "rules": {
     // Enforce explicit null/undefined checks to prevent falsy-value bugs
     "eqeqeq": [
