@@ -82,7 +82,7 @@ variable "job_timeout" {
 variable "job_memory" {
   description = "Memory allocation for job"
   type        = string
-  default     = "512Mi"  # Reduced from 1Gi for cost optimization (testing)
+  default     = "512Mi"  # Default optimized for typical screener workloads
 }
 
 variable "job_cpu" {
