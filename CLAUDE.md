@@ -646,7 +646,7 @@ The screener jobs have been optimized based on empirical production data to redu
 **Current Allocation** (per job):
 - **Memory**: 512Mi (reduced from 2Gi)
 - **CPU**: 1 core (reduced from 2 cores)
-- **Cost Savings**: ~60% reduction vs original allocation
+- **Cost Savings**: ~52% reduction vs original allocation
 
 **Validation Process**:
 1. **Initial Deployment**: Conservative allocation (2Gi/2CPU) based on worst-case estimates
@@ -715,7 +715,7 @@ Include in commit messages and Terraform comments:
 # - Observed peak memory: ~300Mi (512Mi provides 70% headroom)
 # - CPU utilization: <50% sustained at 1 core
 # - Zero OOM errors over 2-week validation period
-# - Cost reduction: ~60% vs original (2Gi/2CPU)
+# - Cost reduction: ~52% vs original (2Gi/2CPU)
 job_memory = "512Mi"
 job_cpu    = "1"
 ```
@@ -978,4 +978,4 @@ cd terraform/environments/prod && terraform plan && terraform apply
 **Frontend URL**: https://goingmerry-stonks.web.app (Firebase Hosting)
 **Backend URL**: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
 **Test Coverage**: 54% (46/46 tests passing)
-**Resource Allocation**: Optimized (512Mi/1CPU per job, 60% cost reduction validated Nov 2025)
+**Resource Allocation**: Optimized (512Mi/1CPU per job, 52% cost reduction validated Nov 2025)
