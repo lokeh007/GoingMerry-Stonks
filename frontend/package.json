@@ -46,7 +46,11 @@
     ]
   },
   "overrides": {
-    "nth-check": "2.1.1"
+    "nth-check": "2.1.1",
+    "glob": "^10.5.0",
+    "test-exclude": "^7.0.1",
+    "postcss": "^8.4.31",
+    "webpack-dev-server": "^5.2.1"
   },
   "proxy": "http://localhost:8000",
   "jest": {

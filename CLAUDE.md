@@ -853,6 +853,14 @@ gcloud run jobs update prod-regular-screeners-batch-1 \
 4. **Regular updates**:
    - Keep dependencies updated (`pip list --outdated`, `npm outdated`)
    - Monitor security advisories (Dependabot, Snyk)
+   - Frontend uses npm overrides to enforce secure dependency versions (glob@10.5.0, test-exclude@7.0.1, postcss@8.4.31, webpack-dev-server@5.2.1)
+
+**Recent Security Fixes** (November 27, 2025):
+- ✅ **glob CLI vulnerability (CVE-2025-GHSA-5j98-mcp5-4vw2)**: Fixed command injection vulnerability in glob package by upgrading to v10.5.0 via npm overrides
+- ✅ **test-exclude compatibility**: Upgraded to v7.0.1 for compatibility with glob@10.x
+- ✅ **postcss vulnerability**: Upgraded to v8.4.31 to address parsing error CVE
+- ✅ **webpack-dev-server vulnerability**: Upgraded to v5.2.1 to address source code exposure risks
+- **Verification**: All 50 tests passing, production build successful, 0 npm audit vulnerabilities
 
 ### Firestore Security Rules
 
@@ -973,9 +981,10 @@ cd terraform/environments/prod && terraform plan && terraform apply
 
 ---
 
-**Last Updated**: November 26, 2025
+**Last Updated**: November 27, 2025 (Security updates: glob@10.5.0, zero npm vulnerabilities)
 **Production Status**: ✅ Deployed and operational
 **Frontend URL**: https://goingmerry-stonks.web.app (Firebase Hosting)
 **Backend URL**: https://prod-backend-api-rlfl2vcoda-ul.a.run.app
-**Test Coverage**: 54% (46/46 tests passing)
+**Test Coverage**: 54% (46/46 tests passing, frontend: 50/50 tests passing)
 **Resource Allocation**: Optimized (512Mi/1CPU per job, 52% cost reduction validated Nov 2025)
+**Security Status**: ✅ 0 vulnerabilities (verified Nov 27, 2025)
