@@ -856,9 +856,9 @@ gcloud run jobs update prod-regular-screeners-batch-1 \
    - Frontend uses npm overrides to enforce secure dependency versions (glob@10.5.0, test-exclude@7.0.1, postcss@8.4.31, webpack-dev-server@5.2.1)
 
 **Recent Security Fixes** (November 27, 2025):
-- ✅ **glob CLI vulnerability (CVE-2025-GHSA-5j98-mcp5-4vw2)**: Fixed command injection vulnerability in glob package by upgrading to v10.5.0 via npm overrides
+- ✅ **glob CLI vulnerability (GHSA-5j98-mcp5-4vw2)**: Fixed command injection vulnerability in glob package by upgrading to v10.5.0 via npm overrides
 - ✅ **test-exclude compatibility**: Upgraded to v7.0.1 for compatibility with glob@10.x
-- ✅ **postcss vulnerability**: Upgraded to v8.4.31 to address parsing error CVE
+- ✅ **postcss vulnerability (CVE-2023-44270)**: Upgraded to v8.4.31 to address line return parsing vulnerability
 - ✅ **webpack-dev-server vulnerability**: Upgraded to v5.2.1 to address source code exposure risks
 - **Verification**: All 50 tests passing, production build successful, 0 npm audit vulnerabilities
 
