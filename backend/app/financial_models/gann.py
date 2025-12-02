@@ -383,10 +383,16 @@ class GannSquareCalculator:
         nearest_resistance = min(resistance_above, key=lambda x: x.price) if resistance_above else None
 
         # Determine position
+        # Extract price lists from detailed level objects
+        support_prices = [s.price for s in support_levels_detailed]
+        resistance_prices = [r.price for r in resistance_levels_detailed]
+
         position = self._determine_position(
             current_price,
             nearest_support.price if nearest_support else None,
             nearest_resistance.price if nearest_resistance else None,
+            support_prices,
+            resistance_prices,
             tolerance=tolerance
         )
 
@@ -455,8 +461,9 @@ class GannSquareCalculator:
             )
 
             # Use cached calculation for performance
-            # Round current_price to nearest $0.10 to improve cache hit rate
-            current_price_rounded = round(current_price * 10) / 10
+            # Bin current_price to nearest $0.10 interval to improve cache hit rate
+            # Use int() to ensure consistent binning (e.g., 100.01-100.09 all bin to 100.0)
+            current_price_rounded = int(current_price * 10) / 10
             support_levels, resistance_levels = _calculate_gann_levels_cached(
                 current_price=current_price_rounded,
                 reference_price=reference_price,
@@ -471,7 +478,12 @@ class GannSquareCalculator:
 
             # Determine current position
             position = self._determine_position(
-                current_price, nearest_support, nearest_resistance, tolerance=tolerance
+                current_price,
+                nearest_support,
+                nearest_resistance,
+                support_levels,
+                resistance_levels,
+                tolerance=tolerance
             )
 
             result = {
@@ -512,17 +524,21 @@ class GannSquareCalculator:
         try:
             levels = self.calculate_gann_levels(current_price, reference_price)
 
-            # Check if within tolerance of support
+            # Check if within tolerance of ANY support level
             at_support = False
-            if levels["nearest_support"]:
-                support_diff = abs(current_price - levels["nearest_support"])
-                at_support = support_diff / current_price <= tolerance
+            for support_level in levels["support_levels"]:
+                support_diff = abs(current_price - support_level) / current_price
+                if support_diff <= tolerance:
+                    at_support = True
+                    break
 
-            # Check if within tolerance of resistance
+            # Check if within tolerance of ANY resistance level
             at_resistance = False
-            if levels["nearest_resistance"]:
-                resistance_diff = abs(current_price - levels["nearest_resistance"])
-                at_resistance = resistance_diff / current_price <= tolerance
+            for resistance_level in levels["resistance_levels"]:
+                resistance_diff = abs(current_price - resistance_level) / current_price
+                if resistance_diff <= tolerance:
+                    at_resistance = True
+                    break
 
             return {"at_support": at_support, "at_resistance": at_resistance}
 
@@ -657,6 +673,8 @@ class GannSquareCalculator:
         current_price: float,
         nearest_support: Optional[float],
         nearest_resistance: Optional[float],
+        support_levels: List[float],
+        resistance_levels: List[float],
         tolerance: float = 0.02,
     ) -> str:
         """
@@ -664,24 +682,41 @@ class GannSquareCalculator:
 
         Args:
             current_price: Current stock price
-            nearest_support: Nearest support level
-            nearest_resistance: Nearest resistance level
+            nearest_support: Nearest support level below current price
+            nearest_resistance: Nearest resistance level above current price
+            support_levels: All calculated support levels
+            resistance_levels: All calculated resistance levels
             tolerance: Price tolerance as percentage (default: 0.02 = 2%)
 
         Returns:
             Position description: 'at_support', 'at_resistance', 'between_levels', 'unknown'
         """
 
+        # First check if price is AT any support level (within tolerance)
+        for support in support_levels:
+            support_diff = abs(current_price - support) / current_price
+            if support_diff <= tolerance:
+                return "at_support"
+
+        # Then check if price is AT any resistance level (within tolerance)
+        for resistance in resistance_levels:
+            resistance_diff = abs(current_price - resistance) / current_price
+            if resistance_diff <= tolerance:
+                return "at_resistance"
+
+        # Check if price is near nearest support
         if nearest_support:
             support_diff = abs(current_price - nearest_support) / current_price
             if support_diff <= tolerance:
                 return "at_support"
 
+        # Check if price is near nearest resistance
         if nearest_resistance:
             resistance_diff = abs(current_price - nearest_resistance) / current_price
             if resistance_diff <= tolerance:
                 return "at_resistance"
 
+        # If we have both nearest levels, price is between them
         if nearest_support and nearest_resistance:
             return "between_levels"
 
