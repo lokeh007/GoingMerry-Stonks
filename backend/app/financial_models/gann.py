@@ -461,8 +461,8 @@ class GannSquareCalculator:
             )
 
             # Use cached calculation for performance
-            # Bin current_price to nearest $0.10 interval to improve cache hit rate
-            # Use int() to ensure consistent binning (e.g., 100.01-100.09 all bin to 100.0)
+            # Floor current_price to nearest $0.10 below to improve cache hit rate
+            # (e.g., 100.01-100.09 → 100.0, 100.10-100.19 → 100.1)
             current_price_rounded = int(current_price * 10) / 10
             support_levels, resistance_levels = _calculate_gann_levels_cached(
                 current_price=current_price_rounded,
@@ -701,18 +701,6 @@ class GannSquareCalculator:
         # Then check if price is AT any resistance level (within tolerance)
         for resistance in resistance_levels:
             resistance_diff = abs(current_price - resistance) / current_price
-            if resistance_diff <= tolerance:
-                return "at_resistance"
-
-        # Check if price is near nearest support
-        if nearest_support:
-            support_diff = abs(current_price - nearest_support) / current_price
-            if support_diff <= tolerance:
-                return "at_support"
-
-        # Check if price is near nearest resistance
-        if nearest_resistance:
-            resistance_diff = abs(current_price - nearest_resistance) / current_price
             if resistance_diff <= tolerance:
                 return "at_resistance"
 
