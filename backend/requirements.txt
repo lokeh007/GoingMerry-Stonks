@@ -15,5 +15,5 @@ google-cloud-firestore==2.21.0
 
 # Scientific Computing & Financial Models
 numpy==1.26.4
-scipy==1.11.4
+scipy==1.16.3
 pandas==2.2.3

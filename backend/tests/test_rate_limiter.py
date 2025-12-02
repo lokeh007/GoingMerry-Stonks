@@ -198,7 +198,9 @@ class TestTokenBucketThreadSafety:
 
     def test_concurrent_acquisition(self):
         """Test that concurrent acquisitions are thread-safe."""
-        bucket = TokenBucket(rate=100, capacity=20, time_unit=1.0)
+        # Use very low refill rate to prevent time-based refill during test
+        # This ensures exactly 20 tokens are available (no refill race condition)
+        bucket = TokenBucket(rate=0.01, capacity=20, time_unit=3600.0)
         successful = []
         failed = []
 
