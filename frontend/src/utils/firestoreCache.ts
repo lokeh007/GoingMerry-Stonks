@@ -18,7 +18,7 @@ export interface CachedScreenerResult {
 /**
  * Load the most recent cached screener results from Firestore.
  *
- * @param screenerName - Name of screener (undiscovered, coiled_spring, smart_money)
+ * @param screenerName - Name of screener (smart_money)
  * @returns Cached screener data or null if not found
  */
 export const loadCachedScreenerResults = async (

@@ -20,8 +20,6 @@ import {
 import {
   runAdvancedScreener,
   runSmartMoneyScreener,
-  runUndiscoveredScreener,
-  runCoiledSpringScreener,
   parseScreenerURLParams,
   buildScreenerURLParams,
 } from '../utils/screenerApi';
@@ -33,7 +31,7 @@ import {
 import './StockScreenerPage.css';
 
 // Screener type enum
-type ScreenerType = 'lynch' | 'smart_money' | 'undiscovered' | 'coiled_spring';
+type ScreenerType = 'lynch' | 'smart_money';
 
 // Screener descriptions
 const SCREENER_DESCRIPTIONS: Record<ScreenerType, string> = {
@@ -41,10 +39,6 @@ const SCREENER_DESCRIPTIONS: Record<ScreenerType, string> = {
     "🏛️ Peter Lynch's fundamental screening strategies for finding high-quality growth stocks at reasonable prices. Categories include Fast Growers, Stalwarts, and more.",
   smart_money:
     "💰 Follow the 'smart money' by tracking unusual options activity. Find stocks where institutions are placing large, aggressive bets before major moves.",
-  undiscovered:
-    "🔍 Lynch-inspired search for hidden gems off Wall Street's radar. Low institutional ownership + minimal analyst coverage + insider buying = potential tenbaggers.",
-  coiled_spring:
-    "🎯 Bulkowski-inspired volatility screener. Find stocks in extreme consolidation (NR7 pattern + low volatility) ready to breakout. The tighter the coil, the bigger the spring.",
 };
 
 // Category descriptions for each Lynch category
@@ -87,22 +81,6 @@ const StockScreenerPage: React.FC = () => {
     universe: 'popular',
   });
 
-  // Undiscovered screener params
-  const [undiscoveredParams, setUndiscoveredParams] = useState({
-    max_institutional_ownership: 25.0,
-    max_analyst_coverage: 5,
-    require_insider_buying: true,
-    universe: 'popular',
-  });
-
-  // Coiled Spring screener params
-  const [coiledSpringParams, setCoiledSpringParams] = useState({
-    max_volatility_30d: 15.0,
-    require_nr7: true,
-    min_percentile_rank: 10.0,
-    universe: 'popular',
-  });
-
   const [response, setResponse] = useState<ScreenerResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,11 +98,11 @@ const StockScreenerPage: React.FC = () => {
     }
   }, [searchParams]);
 
-  // Load cached results when switching to Undiscovered, Coiled Spring, or Smart Money
+  // Load cached results when switching to Smart Money
   useEffect(() => {
     const loadCached = async () => {
       // Only load cached results for screeners that support it
-      if (screenerType !== 'undiscovered' && screenerType !== 'coiled_spring' && screenerType !== 'smart_money') {
+      if (screenerType !== 'smart_money') {
         setIsCached(false);
         setLastUpdated(null);
         return;
@@ -184,13 +162,9 @@ const StockScreenerPage: React.FC = () => {
         // Update URL with current filters for sharing
         const urlParams = buildScreenerURLParams(request);
         setSearchParams(urlParams);
-      } else if (screenerType === 'smart_money') {
-        result = await runSmartMoneyScreener(smartMoneyParams);
-      } else if (screenerType === 'undiscovered') {
-        result = await runUndiscoveredScreener(undiscoveredParams);
       } else {
-        // coiled_spring
-        result = await runCoiledSpringScreener(coiledSpringParams);
+        // smart_money
+        result = await runSmartMoneyScreener(smartMoneyParams);
       }
 
       setResponse(result);
@@ -271,79 +245,12 @@ const StockScreenerPage: React.FC = () => {
         >
           💰 Smart Money
         </button>
-        <button
-          className={`type-tab ${screenerType === 'undiscovered' ? 'active' : ''}`}
-          onClick={() => handleScreenerTypeChange('undiscovered')}
-        >
-          🔍 The Undiscovered
-        </button>
-        <button
-          className={`type-tab ${screenerType === 'coiled_spring' ? 'active' : ''}`}
-          onClick={() => handleScreenerTypeChange('coiled_spring')}
-        >
-          🎯 The Coiled Spring
-        </button>
       </div>
 
       {/* Screener Description */}
       <div className="screener-description-box">
         {SCREENER_DESCRIPTIONS[screenerType]}
       </div>
-
-      {/* Cache Status Banner (for Undiscovered and Coiled Spring) */}
-      {(screenerType === 'undiscovered' || screenerType === 'coiled_spring') && (
-        <div style={{
-          padding: '12px 20px',
-          margin: '10px 0',
-          borderRadius: '8px',
-          background: isCached ? '#e8f5e9' : '#fff8e1',
-          border: `1px solid ${isCached ? '#4caf50' : '#ffc107'}`,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <div>
-            {loadingCached ? (
-              <span>⏳ Loading cached results...</span>
-            ) : isCached && lastUpdated ? (
-              <>
-                <span style={{ fontWeight: 'bold', color: '#2e7d32' }}>
-                  ✓ Cached Results
-                </span>
-                <span style={{ marginLeft: '10px', color: '#666' }}>
-                  Last updated: {formatLastUpdated(lastUpdated)}
-                </span>
-                {isCachedResultStale(lastUpdated) && (
-                  <span style={{ marginLeft: '10px', color: '#ff6f00' }}>
-                    ⚠️ Data may be stale (&gt;24 hours old)
-                  </span>
-                )}
-              </>
-            ) : (
-              <span style={{ color: '#f57c00' }}>
-                ⚡ Real-time screening available - click "RUN SCREEN" below
-              </span>
-            )}
-          </div>
-          {isCached && (
-            <button
-              onClick={handleRunScreen}
-              disabled={loading}
-              style={{
-                padding: '6px 12px',
-                background: '#2196f3',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              {loading ? 'Refreshing...' : '🔄 Refresh Now'}
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Conditional Filters Based on Screener Type */}
       <div className="screener-section">
@@ -405,154 +312,6 @@ const StockScreenerPage: React.FC = () => {
                   onChange={(e) =>
                     setSmartMoneyParams({
                       ...smartMoneyParams,
-                      universe: e.target.value,
-                    })
-                  }
-                  disabled={loading}
-                >
-                  <option value="popular">Popular (46 stocks)</option>
-                  <option value="sp500_sample">S&P 500 Sample (41 stocks)</option>
-                  <option value="tech">Technology (31 stocks)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {screenerType === 'undiscovered' && (
-          <div className="simple-filters">
-            <h3>Undiscovered Filters</h3>
-            <div className="filter-grid">
-              <div className="filter-item">
-                <label>Max Institutional Ownership (%):</label>
-                <input
-                  type="number"
-                  step="1"
-                  value={undiscoveredParams.max_institutional_ownership}
-                  onChange={(e) =>
-                    setUndiscoveredParams({
-                      ...undiscoveredParams,
-                      max_institutional_ownership: parseFloat(e.target.value),
-                    })
-                  }
-                  disabled={loading}
-                />
-                <small>Maximum institutional ownership percentage (default: 25%)</small>
-              </div>
-              <div className="filter-item">
-                <label>Max Analyst Coverage:</label>
-                <input
-                  type="number"
-                  step="1"
-                  value={undiscoveredParams.max_analyst_coverage}
-                  onChange={(e) =>
-                    setUndiscoveredParams({
-                      ...undiscoveredParams,
-                      max_analyst_coverage: parseInt(e.target.value),
-                    })
-                  }
-                  disabled={loading}
-                />
-                <small>Maximum number of analysts (default: 5)</small>
-              </div>
-              <div className="filter-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={undiscoveredParams.require_insider_buying}
-                    onChange={(e) =>
-                      setUndiscoveredParams({
-                        ...undiscoveredParams,
-                        require_insider_buying: e.target.checked,
-                      })
-                    }
-                    disabled={loading}
-                  />
-                  Require Insider Buying
-                </label>
-                <small>Only show stocks with recent insider net purchases</small>
-              </div>
-              <div className="filter-item">
-                <label>Stock Universe:</label>
-                <select
-                  value={undiscoveredParams.universe}
-                  onChange={(e) =>
-                    setUndiscoveredParams({
-                      ...undiscoveredParams,
-                      universe: e.target.value,
-                    })
-                  }
-                  disabled={loading}
-                >
-                  <option value="popular">Popular (46 stocks)</option>
-                  <option value="sp500_sample">S&P 500 Sample (41 stocks)</option>
-                  <option value="tech">Technology (31 stocks)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {screenerType === 'coiled_spring' && (
-          <div className="simple-filters">
-            <h3>Coiled Spring Filters</h3>
-            <div className="filter-grid">
-              <div className="filter-item">
-                <label>Max 30-Day Volatility (%):</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={coiledSpringParams.max_volatility_30d}
-                  onChange={(e) =>
-                    setCoiledSpringParams({
-                      ...coiledSpringParams,
-                      max_volatility_30d: parseFloat(e.target.value),
-                    })
-                  }
-                  disabled={loading}
-                />
-                <small>Maximum historical volatility threshold (default: 15%)</small>
-              </div>
-              <div className="filter-item">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={coiledSpringParams.require_nr7}
-                    onChange={(e) =>
-                      setCoiledSpringParams({
-                        ...coiledSpringParams,
-                        require_nr7: e.target.checked,
-                      })
-                    }
-                    disabled={loading}
-                  />
-                  Require NR7 Pattern
-                </label>
-                <small>Only show stocks with narrowest range of last 7 days</small>
-              </div>
-              <div className="filter-item">
-                <label>Max Volatility Percentile (%):</label>
-                <input
-                  type="number"
-                  step="1"
-                  value={coiledSpringParams.min_percentile_rank}
-                  onChange={(e) =>
-                    setCoiledSpringParams({
-                      ...coiledSpringParams,
-                      min_percentile_rank: parseFloat(e.target.value),
-                    })
-                  }
-                  disabled={loading}
-                />
-                <small>Maximum percentile rank (lower = more compressed, default: 10%)</small>
-              </div>
-              <div className="filter-item">
-                <label>Stock Universe:</label>
-                <select
-                  value={coiledSpringParams.universe}
-                  onChange={(e) =>
-                    setCoiledSpringParams({
-                      ...coiledSpringParams,
                       universe: e.target.value,
                     })
                   }
